@@ -7,7 +7,7 @@ hosts the protocol. Ableton's MIDI Remote Scripts and FL Studio's MIDI
 scripting are the inspiration; CLAP is the model for how it is
 packaged, versioned and adopted.
 
-Status: plan (2026-11-15). Nothing is built yet.
+Status: stage 1 built (2026-11-15): see [protocol.md](protocol.md). The rest is the plan.
 
 ## Goals
 
@@ -69,7 +69,7 @@ Status: plan (2026-11-15). Nothing is built yet.
 - **The Odin kit** (`surface` package) is a framework compiled into the
   surface's own library. It speaks to the host only through the header,
   so a host never depends on the kit's version.
-- **The host library** (`surface/host` package, Odin) is an optional,
+- **The host library** (`host` package, Odin) is an optional,
   reusable implementation of the host side: scanning, detection, the
   claim table, lifecycle. Fire Engine's `fire:surface` becomes a thin
   layer on it. Other hosts can use it, or implement the header
@@ -351,7 +351,7 @@ what changed when the device allows it.
 
 - fire-surface comes in as a git submodule; `fire:surface` (ABI 2, the
   flat controls and fixed transport) is replaced by a host built on
-  `surface/host`, and `examples/pads_surface/pads_mini.c` is ported.
+  the `host` package, and `examples/pads_surface/pads_mini.c` is ported.
 - Pads' MIDI path applies the claim table before the engine; controller
   ports are found and paired by the descriptors.
 - Pads offers `fsurf.daw` (from the Pads API) and `fire.pads`.
@@ -367,10 +367,12 @@ what changed when the device allows it.
 Each is built, tested (the test host, and Pads' tests where it reaches
 Pads), documented, and pushed.
 
-1. **The protocol**: `fsurf.h`, its Odin declarations, the entry and
-   factory, descriptors, lifecycle, MIDI out, timers, state, log;
-   `surface/host` scanning and loading; a C surface and a test that
-   loads it.
+1. **The protocol** (built): `fsurf.h`, its Odin declarations (`abi`),
+   the entry and factory, descriptors (ports and identity; devices and
+   displays come with stage 6), lifecycle, MIDI out, timers, settings
+   and project state, log and notify; the host library (`host`):
+   scanning and loading; surfaces in C and Odin, and tests that run
+   them and check the Odin layout against the header's.
 2. **Detection and the claim table**: port matching and pairing,
    identity request and reply, hot plug; the claim table and its rules
    in the host library; in Pads, on the MIDI path before the engine.
