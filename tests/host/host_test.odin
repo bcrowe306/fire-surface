@@ -41,6 +41,7 @@ abi_matches_the_header :: proc(t: ^testing.T) {
 		"fsurf_surface_t"         = abi.Surface,
 		"fsurf_surface_factory_t" = abi.Surface_Factory,
 		"fsurf_entry_t"           = abi.Entry,
+		"fsurf_rule_t"            = abi.Rule,
 	}
 	defer delete(types)
 	seen := 0

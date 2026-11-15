@@ -12,7 +12,7 @@ A surface library exports `fsurf_entry` (an `Entry`):
 package fsurf_abi
 
 // The header's version: FSURF_VERSION_MAJOR, _MINOR, _REVISION.
-VERSION :: Version{0, 1, 0}
+VERSION :: Version{0, 2, 0}
 
 // The symbol a .fsurf exports: an `Entry`.
 ENTRY_SYMBOL :: "fsurf_entry"
@@ -111,6 +111,61 @@ Descriptor :: struct {
 	required_extensions: [^]cstring, // null-terminated, or nil
 }
 
+// A rule of a surface's claim table (fsurf_rule_t): which messages it
+// matches, and where they go. The first rule that matches decides; no rule
+// = Pass. A note off and a note's pressure go where its note on went.
+Rule :: struct {
+	port:       u32, // an input id from activate, or NO_PORT: all its inputs
+	messages:   Messages, // {} = every kind
+	channels:   u32, // bit c = channel c; 0 = every channel
+	first:      u8, // data byte 1 from first to end-1 (end 0 = to 127)
+	end:        u8,
+	_reserved:  [2]u8,
+	sysex:      [^]u8, // Sysex: leading bytes (F0 ...); nil = any SysEx
+	sysex_size: u32,
+	action:     Rule_Action,
+	flags:      Rule_Flags,
+	note_map:   [^]u8, // Remap: 128 entries for data byte 1 (0xFF drops), or nil
+	value_map:  [^]u8, // Remap: 128 entries for data byte 2, or nil
+	channel:    u32, // Remap: 1-16, or 0 = its own
+}
+
+// A kind of MIDI message (FSURF_MSG_*).
+Message :: enum u32 {
+	Note_Off         = 0, // 8n, and 9n with velocity 0
+	Note_On          = 1,
+	Poly_Pressure    = 2,
+	Control          = 3,
+	Program          = 4,
+	Channel_Pressure = 5,
+	Pitch_Bend       = 6,
+	Sysex            = 7,
+	System           = 8, // F1-F6, F8-FF
+}
+
+// Kinds of message (a rule's `messages`).
+Messages :: distinct bit_set[Message; u32]
+
+// Notes: off, on, and their pressure (FSURF_MSG_NOTES).
+MESSAGES_NOTES :: Messages{.Note_Off, .Note_On, .Poly_Pressure}
+
+// Where a rule sends what it matches (FSURF_RULE_*).
+Rule_Action :: enum u32 {
+	Pass    = 0, // to the host, untouched
+	Claim   = 1, // to the surface only
+	Observe = 2, // to both
+	Remap   = 3, // to the host, changed
+	Drop    = 4, // nowhere
+}
+
+// FSURF_RULE_FLAG_*.
+Rule_Flag :: enum u32 {
+	Copy = 0, // Remap: the surface gets the message as it came, too
+}
+
+// A rule's flags.
+Rule_Flags :: distinct bit_set[Rule_Flag; u32]
+
 // A host log level (FSURF_LOG_*).
 Log_Level :: enum i32 {
 	Debug   = 0,
@@ -138,6 +193,8 @@ Host :: struct {
 	settings_get:  proc "c" (host: ^Host, buffer: rawptr, capacity: u32) -> u32,
 	settings_set:  proc "c" (host: ^Host, data: rawptr, size: u32) -> bool,
 	identified:    proc "c" (host: ^Host, ok: bool),
+	set_rules:     proc "c" (host: ^Host, rules: [^]Rule, count: u32) -> bool,
+	inject_midi:   proc "c" (host: ^Host, port: u32, bytes: [^]u8, size: u32) -> bool,
 }
 
 // A port pair given at activate (fsurf_port_t).

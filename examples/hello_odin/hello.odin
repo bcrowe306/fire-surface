@@ -34,6 +34,13 @@ ports := [?]abi.Port_Spec{{
 	output_names = raw_data(out_names[:]),
 }}
 
+// Its claim table: its pads (notes 36-51) and its own SysEx come to it.
+own_sysex := [?]u8{0xF0, 0x7D}
+rules := [?]abi.Rule{
+	{port = abi.NO_PORT, messages = abi.MESSAGES_NOTES, first = 36, end = 52, action = .Claim},
+	{port = abi.NO_PORT, messages = {.Sysex}, sysex = raw_data(own_sysex[:]), sysex_size = len(own_sysex), action = .Claim},
+}
+
 id_match := [?]u8{0xF0, 0x7E, 0x00, 0x06, 0x02, 0x7D}
 id_mask := [?]u8{0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0xFF}
 
@@ -51,7 +58,7 @@ descriptor := abi.Descriptor{
 	id            = "org.fsurf.example.hello-odin",
 	name          = "Hello (Odin)",
 	vendor        = "fire-surface",
-	version       = "0.1.0",
+	version       = "0.2.0",
 	url           = "https://github.com/bcrowe306/fire-surface",
 	description   = "The smallest useful surface, in Odin",
 	ports         = raw_data(ports[:]),
@@ -88,7 +95,7 @@ hello_activate :: proc "c" (s: ^abi.Surface, p: [^]abi.Port, count: u32) -> bool
 	n += 1
 	h.host.settings_set(h.host, &n, size_of(n))
 	h.timer = h.host.timer_start(h.host, 10)
-	return true
+	return h.host.set_rules(h.host, raw_data(rules[:]), len(rules))
 }
 
 hello_deactivate :: proc "c" (s: ^abi.Surface) {

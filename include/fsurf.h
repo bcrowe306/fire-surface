@@ -58,7 +58,7 @@ extern "C" {
 /* ── Versions ─────────────────────────────────────────────────────────── */
 
 #define FSURF_VERSION_MAJOR 0
-#define FSURF_VERSION_MINOR 1
+#define FSURF_VERSION_MINOR 2
 #define FSURF_VERSION_REVISION 0
 
 typedef struct fsurf_version {
@@ -156,6 +156,70 @@ typedef struct fsurf_descriptor {
 	const char *const *required_extensions;
 } fsurf_descriptor_t;
 
+/* ── The claim table: where MIDI from the device goes ─────────────────── */
+
+/* A surface's rules for the MIDI that comes in on its input ports. The host
+   applies them to each message as it arrives, on its MIDI path (not the
+   surface's thread), before its own MIDI handling sees the message: the
+   first rule that matches decides, and a message no rule matches is passed
+   to the host untouched. A message the surface is to get is queued for its
+   thread and given to on_midi there.
+
+   A note off (or a note on of velocity 0), and a note's polyphonic
+   pressure, go where their note on went, even if the rules changed in
+   between: a note never sticks. */
+typedef struct fsurf_rule {
+	uint32_t port;     /* an input id from activate, or FSURF_NO_PORT: all its inputs */
+	uint32_t messages; /* FSURF_MSG_* bits; 0 = every kind */
+	uint32_t channels; /* bit c = channel c (0-15); 0 = every channel */
+	/* Data byte 1 (a note, a CC or program number) from `first` to one before
+	   `end`; end 0 = to 127. For the kinds that have one; the others match
+	   any. */
+	uint8_t first;
+	uint8_t end;
+	uint8_t _reserved[2];
+	/* FSURF_MSG_SYSEX: a SysEx beginning with these bytes (F0 ...); NULL =
+	   any SysEx. */
+	const uint8_t *sysex;
+	uint32_t sysex_size;
+	uint32_t action; /* FSURF_RULE_* */
+	uint32_t flags;  /* FSURF_RULE_FLAG_* */
+	/* FSURF_RULE_REMAP: what the host gets instead. Each map has 128 entries,
+	   NULL = unchanged. `note_map` maps data byte 1 (0xFF drops the
+	   message); `value_map` data byte 2 (velocity, CC value, pressure: a
+	   note on's never becomes 0). */
+	const uint8_t *note_map;
+	const uint8_t *value_map;
+	/* FSURF_RULE_REMAP: the channel the host gets it on, 1-16; 0 = its own. */
+	uint32_t channel;
+} fsurf_rule_t;
+
+enum {
+	FSURF_MSG_NOTE_OFF = 1 << 0, /* 8n, and 9n with velocity 0 */
+	FSURF_MSG_NOTE_ON = 1 << 1,
+	FSURF_MSG_POLY_PRESSURE = 1 << 2,
+	FSURF_MSG_CONTROL = 1 << 3,
+	FSURF_MSG_PROGRAM = 1 << 4,
+	FSURF_MSG_CHANNEL_PRESSURE = 1 << 5,
+	FSURF_MSG_PITCH_BEND = 1 << 6,
+	FSURF_MSG_SYSEX = 1 << 7,
+	FSURF_MSG_SYSTEM = 1 << 8, /* F1-F6, F8-FF: clock, start, stop... */
+	FSURF_MSG_NOTES = FSURF_MSG_NOTE_OFF | FSURF_MSG_NOTE_ON | FSURF_MSG_POLY_PRESSURE,
+};
+
+enum {
+	FSURF_RULE_PASS = 0,    /* to the host, untouched (what no rule does too) */
+	FSURF_RULE_CLAIM = 1,   /* to the surface only */
+	FSURF_RULE_OBSERVE = 2, /* to both */
+	FSURF_RULE_REMAP = 3,   /* to the host, changed (note_map, value_map, channel) */
+	FSURF_RULE_DROP = 4,    /* nowhere */
+};
+
+enum {
+	/* With FSURF_RULE_REMAP: the surface gets the message as it came, too. */
+	FSURF_RULE_FLAG_COPY = 1 << 0,
+};
+
 /* ── The host, as a surface sees it ───────────────────────────────────── */
 
 enum {
@@ -208,6 +272,19 @@ typedef struct fsurf_host {
 	/* FSURF_IDENTIFY_SURFACE: the device on the ports is (or is not) the
 	   surface's. */
 	void (*identified)(const struct fsurf_host *host, bool ok);
+
+	/* Replaces the surface's claim table (fsurf_rule_t) with these rules, in
+	   the order they are tried; count 0 = none (everything passes). The host
+	   copies them. They apply while the surface is active; set them in
+	   activate, and again whenever what its controls do changes (a mode).
+	   Messages already on their way are judged by the rules they met. False
+	   when a rule is malformed (and nothing changes). */
+	bool (*set_rules)(const struct fsurf_host *host, const fsurf_rule_t *rules, uint32_t count);
+	/* Gives the host a message as if it had come in on the surface's input
+	   `port` and been passed: for a surface that claims a message, decides in
+	   code, and hands it on (later than a rule would, by the surface
+	   thread's latency). False when the port isn't the surface's. */
+	bool (*inject_midi)(const struct fsurf_host *host, uint32_t port, const uint8_t *bytes, uint32_t size);
 } fsurf_host_t;
 
 /* ── A surface ────────────────────────────────────────────────────────── */
@@ -244,8 +321,11 @@ typedef struct fsurf_surface {
 	   sends its goodbye if the ports are still there. */
 	void (*deactivate)(const struct fsurf_surface *surface);
 
-	/* MIDI from the device, while active: a short message or a whole SysEx;
-	   `time_ns` on the host's clock (now_ns). */
+	/* MIDI from the device, while active: what its rules send it (claimed,
+	   observed, or copied), a short message or a whole SysEx, on its thread
+	   after the message arrived; `time_ns` is when it arrived, on the host's
+	   clock (now_ns). While it identifies itself (FSURF_IDENTIFY_SURFACE) it
+	   gets everything from its ports. */
 	void (*on_midi)(const struct fsurf_surface *surface, uint32_t port, const uint8_t *bytes, uint32_t size, uint64_t time_ns);
 	/* A timer from timer_start. */
 	void (*on_timer)(const struct fsurf_surface *surface, uint32_t timer_id);

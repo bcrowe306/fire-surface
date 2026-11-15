@@ -7,7 +7,7 @@ hosts the protocol. Ableton's MIDI Remote Scripts and FL Studio's MIDI
 scripting are the inspiration; CLAP is the model for how it is
 packaged, versioned and adopted.
 
-Status: stage 1 built (2026-11-15): see [protocol.md](protocol.md). The rest is the plan.
+Status: stages 1 and 2 built (2026-11-15): see [protocol.md](protocol.md). The rest is the plan.
 
 ## Goals
 
@@ -373,9 +373,13 @@ Pads), documented, and pushed.
    and project state, log and notify; the host library (`host`):
    scanning and loading; surfaces in C and Odin, and tests that run
    them and check the Odin layout against the header's.
-2. **Detection and the claim table**: port matching and pairing,
-   identity request and reply, hot plug; the claim table and its rules
-   in the host library; in Pads, on the MIDI path before the engine.
+2. **Detection and the claim table** (built): port matching and pairing,
+   identity request and reply, the surface's own handshake, the most
+   specific surface picked, hot plug, assigning by hand; the claim table
+   and its rules (`set_rules`, `inject_midi`; protocol 0.2) applied by
+   the host library's `route`, lock-free, notes following their note on;
+   surfaces linked in (`library_static`). Wiring `route` into Pads' MIDI
+   path moved to stage 7, with the rest of Pads' side.
 3. **The kit's core**: Control_Surface and the spec, controls, layers
    and owner stacks, components, modes and behaviours, skins, tasks, the
    claim table worked out from owners; the MIDI, music and colour
@@ -389,7 +393,8 @@ Pads), documented, and pushed.
 6. **Displays**: the draw kit, USB bulk and HID through the host, frame
    pacing, mirrored in the virtual controller; an example display
    surface.
-7. **Pads moves over**: `fire:surface` replaced, `pads_mini` ported,
+7. **Pads moves over**: `fire:surface` replaced, `route` on Pads' MIDI
+   path before the engine, controller ports found by `host_set_ports`, `pads_mini` ported,
    `fire.pads` components, Settings → Control Surfaces, the guides.
 
 ## Questions for later

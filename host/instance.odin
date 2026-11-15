@@ -19,6 +19,18 @@ Host_Config :: struct {
 	notify:        proc(user: rawptr, s: ^Instance, text: string),
 	// The clock on_midi's times are on; nil = the time since `host_init`.
 	now_ns:        proc(user: rawptr) -> u64,
+	// A message a surface hands on (`inject_midi`), as if it had come in on
+	// its input `port` and been passed: for the app's own MIDI handling.
+	inject_midi:   proc(user: rawptr, s: ^Instance, port: u32, bytes: []u8) -> bool,
+	// Detection: whether the app has an extension (a descriptor's
+	// required_extensions); nil = none.
+	has_extension: proc(user: rawptr, id: string) -> bool,
+	// Detection: a device's state changed (`old` == `d.state` for one just
+	// found). Read `instance_settings` here when it goes Gone, to keep them.
+	on_device:     proc(user: rawptr, d: ^Device, old: Device_State),
+	// Detection: the settings blob kept for a device, given to its surface
+	// when it is made (copied). nil, or empty: none.
+	device_settings: proc(user: rawptr, d: ^Device) -> []u8,
 }
 
 // Runs surfaces. Surface thread only. Fields are internal.
@@ -32,6 +44,14 @@ Host :: struct {
 	next_timer: u32,
 	started:    time.Tick,
 	updating:   bool,
+	next_uid:   u32,
+	router:     Router,
+	routes_dirty: bool,
+	libraries:  [dynamic]^Library,
+	devices:    [dynamic]^Device,
+	inputs:     [dynamic]Port_Info,
+	outputs:    [dynamic]Port_Info,
+	disabled:   [dynamic]string, // surface ids not detected
 }
 
 @(private)
@@ -65,6 +85,10 @@ Instance :: struct {
 	c_host:     abi.Host, // what it was given
 	ports:      [dynamic]abi.Port, // while identifying or active
 	port_names: [dynamic]cstring, // owned
+	uid:        u32, // never 0
+	device:     ^Device, // what detection made it for, or nil
+	rules:      [dynamic]Compiled_Rule, // its claim table
+	rule_bytes: [dynamic]u8,
 }
 
 // Why a surface couldn't be made.
@@ -77,16 +101,25 @@ Instance_Error :: enum {
 
 // Sets up a host for surfaces. Free with `host_destroy`.
 host_init :: proc(h: ^Host, config: Host_Config, allocator := context.allocator) {
-	h^ = {config = config, allocator = allocator, ctx = context, started = time.tick_now(), next_timer = 1}
+	h^ = {config = config, allocator = allocator, ctx = context, started = time.tick_now(), next_timer = 1, next_uid = 1}
 	h.instances = make([dynamic]^Instance, allocator)
 	h.timers = make([dynamic]Timer, allocator)
+	h.libraries = make([dynamic]^Library, allocator)
+	h.devices = make([dynamic]^Device, allocator)
+	h.inputs = make([dynamic]Port_Info, allocator)
+	h.outputs = make([dynamic]Port_Info, allocator)
+	h.disabled = make([dynamic]string, allocator)
+	router_init(&h.router, allocator)
 	for s, i in ([4]string{config.name, config.vendor, config.url, config.version}) do h.strings[i] = strings.clone_to_cstring(s, allocator)
 }
 
 // Destroys every surface still running (deactivating the active ones) and
-// frees the host. Libraries stay loaded: unload them after.
+// frees the host. Libraries stay loaded: unload them after. Stop calling
+// `route` first.
 host_destroy :: proc(h: ^Host) {
+	devices_destroy(h)
 	for len(h.instances) > 0 do instance_destroy(h.instances[len(h.instances) - 1])
+	router_destroy(&h.router, h.allocator)
 	delete(h.instances)
 	delete(h.timers)
 	for s in h.strings do delete(s, h.allocator)
@@ -98,10 +131,12 @@ host_now_ns :: proc(h: ^Host) -> u64 {
 	return u64(time.tick_diff(h.started, time.tick_now()))
 }
 
-// Once a host frame: the timers that are due, then every active surface's
-// on_idle.
+// Once a host frame: the MIDI `route` queued for surfaces (and identity
+// replies), then the timers that are due, identification, and every active
+// surface's on_idle.
 host_update :: proc(h: ^Host) {
 	h.updating = true
+	router_drain(h, deliver)
 	now := host_now_ns(h)
 	// (A timer may start or stop timers: those made now wait for the next update.)
 	n := len(h.timers)
@@ -114,6 +149,10 @@ host_update :: proc(h: ^Host) {
 		if s.surface.on_timer != nil do s.surface.on_timer(s.surface, t.id)
 	}
 	for i := len(h.timers) - 1; i >= 0; i -= 1 do if h.timers[i].stopped do ordered_remove(&h.timers, i)
+	tick_probes(h)
+	resolve(h)
+	publish_routes(h)
+	router_collect(&h.router, h.allocator)
 	for i := 0; i < len(h.instances); i += 1 {
 		s := h.instances[i]
 		if s.state == .Active && s.surface.on_idle != nil do s.surface.on_idle(s.surface)
@@ -126,7 +165,11 @@ instance_create :: proc(h: ^Host, l: ^Library, surface_id: string) -> (^Instance
 	d := library_find(l, surface_id)
 	if d == nil do return nil, .No_Such_Surface
 	s := new(Instance, h.allocator)
-	s^ = {host = h, library = l, descriptor = d}
+	s^ = {host = h, library = l, descriptor = d, uid = h.next_uid}
+	h.next_uid += 1
+	if h.next_uid == 0 do h.next_uid = 1
+	s.rules = make([dynamic]Compiled_Rule, h.allocator)
+	s.rule_bytes = make([dynamic]u8, h.allocator)
 	s.settings = make([dynamic]u8, h.allocator)
 	s.ports = make([dynamic]abi.Port, h.allocator)
 	s.port_names = make([dynamic]cstring, h.allocator)
@@ -148,6 +191,8 @@ instance_create :: proc(h: ^Host, l: ^Library, surface_id: string) -> (^Instance
 		settings_get  = c_settings_get,
 		settings_set  = c_settings_set,
 		identified    = c_identified,
+		set_rules     = c_set_rules,
+		inject_midi   = c_inject_midi,
 	}
 	id := strings.clone_to_cstring(surface_id, context.temp_allocator)
 	surf := l.factory.create(l.factory, &s.c_host, id)
@@ -212,6 +257,8 @@ instance_identify :: proc(s: ^Instance, ports: []Port_Assignment) -> bool {
 	if s.state == .Active || s.surface.identify == nil || !set_ports(s, ports) do return false
 	s.identified = nil
 	s.state = .Identifying
+	s.host.routes_dirty = true
+	publish_routes(s.host)
 	s.surface.identify(s.surface, raw_data(s.ports), u32(len(s.ports)))
 	return true
 }
@@ -228,6 +275,8 @@ instance_activate :: proc(s: ^Instance, ports: []Port_Assignment) -> bool {
 		return false
 	}
 	s.state = .Active
+	s.host.routes_dirty = true
+	publish_routes(s.host)
 	return true
 }
 
@@ -236,6 +285,8 @@ instance_deactivate :: proc(s: ^Instance) {
 	if s.state == .Active do s.surface.deactivate(s.surface)
 	free_ports(s)
 	s.state = .Ready
+	s.host.routes_dirty = true
+	publish_routes(s.host)
 }
 
 // MIDI from its device (a short message, or a whole SysEx), on the input
@@ -300,7 +351,13 @@ instance_destroy :: proc(s: ^Instance) {
 	s.surface.destroy(s.surface)
 	s.library.instances -= 1
 	for x, i in h.instances do if x == s { ordered_remove(&h.instances, i); break }
+	if d := s.device; d != nil { // destroyed by the app, not by detection
+		d.instance = nil
+		set_state(h, d, .Failed)
+	}
 	instance_free(s)
+	h.routes_dirty = true
+	publish_routes(h)
 }
 
 @(private)
@@ -309,6 +366,8 @@ instance_free :: proc(s: ^Instance) {
 	delete(s.ports)
 	delete(s.port_names)
 	delete(s.settings)
+	delete(s.rules)
+	delete(s.rule_bytes)
 	free(s, s.host.allocator)
 }
 
@@ -398,4 +457,49 @@ c_settings_set :: proc "c" (h: ^abi.Host, data: rawptr, size: u32) -> bool {
 c_identified :: proc "c" (h: ^abi.Host, ok: bool) {
 	s := from(h)
 	if s.state == .Identifying do s.identified = ok
+}
+
+@(private)
+c_set_rules :: proc "c" (h: ^abi.Host, rules: [^]abi.Rule, count: u32) -> bool {
+	s := from(h)
+	context = s.host.ctx
+	if count > 0 && rules == nil do return false
+	compiled := make([dynamic]Compiled_Rule, s.host.allocator)
+	bytes := make([dynamic]u8, s.host.allocator)
+	if !compile_rules(rules[:count] if count > 0 else nil, &compiled, &bytes) {
+		delete(compiled)
+		delete(bytes)
+		return false
+	}
+	delete(s.rules)
+	delete(s.rule_bytes)
+	s.rules = compiled
+	s.rule_bytes = bytes
+	s.host.routes_dirty = true
+	publish_routes(s.host)
+	return true
+}
+
+@(private)
+c_inject_midi :: proc "c" (h: ^abi.Host, port: u32, bytes: [^]u8, size: u32) -> bool {
+	s := from(h)
+	context = s.host.ctx
+	if s.host.config.inject_midi == nil || bytes == nil || size == 0 || port == abi.NO_PORT do return false
+	mine := false
+	for p in s.ports do if p.input == port do mine = true
+	if !mine do return false
+	return s.host.config.inject_midi(s.host.config.user, s, port, bytes[:size])
+}
+
+// What `route` queued, to its surface (or to detection).
+@(private)
+deliver :: proc(h: ^Host, uid, port: u32, bytes: []u8, time_ns: u64) {
+	if uid == 0 {
+		probe_reply(h, port, bytes)
+		return
+	}
+	for s in h.instances do if s.uid == uid {
+		instance_midi(s, port, bytes, time_ns)
+		return
+	}
 }

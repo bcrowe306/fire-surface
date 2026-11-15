@@ -4,7 +4,9 @@
  *
  * - init: logs, and pings the host's "org.fsurf.test" extension if it has one.
  * - activate: sends a hello (F0 7D 01 F7), counts its activations in its
- *   settings, starts a 10 ms timer.
+ *   settings, starts a 10 ms timer, and publishes its claim table: notes
+ *   36-51 (its pads) and its own SysEx (F0 7D ...) come to it, the rest
+ *   (a keyboard's keys, CCs) goes on to the host.
  * - a note on lights the pad (the same note back, velocity 127); a SysEx
  *   is answered with a notify("sysex").
  * - each tick sends CC 16 with the tick count.
@@ -44,6 +46,13 @@ static const fsurf_port_spec_t ports[] = {{
 	.output_names = out_names,
 }};
 
+/* Its claim table. */
+static const uint8_t own_sysex[] = {0xF0, 0x7D};
+static const fsurf_rule_t rules[] = {
+	{.port = FSURF_NO_PORT, .messages = FSURF_MSG_NOTES, .first = 36, .end = 52, .action = FSURF_RULE_CLAIM},
+	{.port = FSURF_NO_PORT, .messages = FSURF_MSG_SYSEX, .sysex = own_sysex, .sysex_size = sizeof(own_sysex), .action = FSURF_RULE_CLAIM},
+};
+
 /* The identity reply: F0 7E <any channel> 06 02 7D ... */
 static const uint8_t id_match[] = {0xF0, 0x7E, 0x00, 0x06, 0x02, 0x7D};
 static const uint8_t id_mask[] = {0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0xFF};
@@ -62,7 +71,7 @@ static const fsurf_descriptor_t descriptor = {
 	.id = "org.fsurf.example.hello-c",
 	.name = "Hello (C)",
 	.vendor = "fire-surface",
-	.version = "0.1.0",
+	.version = "0.2.0",
 	.url = "https://github.com/bcrowe306/fire-surface",
 	.description = "The smallest useful surface, in C",
 	.ports = ports,
@@ -98,7 +107,7 @@ static bool hello_activate(const fsurf_surface_t *s, const fsurf_port_t *p, uint
 	n++;
 	h->host->settings_set(h->host, &n, sizeof n);
 	h->timer = h->host->timer_start(h->host, 10);
-	return true;
+	return h->host->set_rules(h->host, rules, sizeof rules / sizeof rules[0]);
 }
 
 static void hello_deactivate(const fsurf_surface_t *s) {

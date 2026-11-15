@@ -13,17 +13,19 @@ host that implements the protocol.
 - **Extensions**: a standard `fsurf.daw` (transport, tracks, devices, a
   launcher) and each host's own (for Pads: `fire.pads`).
 
-Status: stage 1 of [the design](docs/design.md) is built: the protocol
-(version 0.1: loading, lifecycle, MIDI out, timers, settings, project
-state, extensions), the Odin host library, and examples in C and Odin.
-See [docs/protocol.md](docs/protocol.md).
+Status: stages 1 and 2 of [the design](docs/design.md) are built: the
+protocol (version 0.2: loading, lifecycle, MIDI out, timers, settings,
+project state, extensions, the claim table), the Odin host library
+(scanning, detection by port names and identity replies, hot plug, the
+claim table on the MIDI path), and examples in C and Odin. See
+[docs/protocol.md](docs/protocol.md).
 
 ```
 include/fsurf.h      the protocol (C)
 abi/                 the same in Odin
-host/                the host side, for Odin hosts: scan, load, run surfaces
+host/                the host side, for Odin hosts: scan, load, detect, route MIDI, run surfaces
 examples/            hello_c, hello_odin
-tests/host           the host library with both examples; Odin vs the header's layout
+tests/host           the host library with both examples and linked-in test surfaces; Odin vs the header's layout
 ```
 
 ```bash

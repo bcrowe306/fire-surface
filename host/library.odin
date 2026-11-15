@@ -1,8 +1,12 @@
 /*
 The host side of fire-surface, for hosts written in Odin: finding .fsurf
-libraries, loading them, and running their surfaces (lifecycle, MIDI to
-them, their timers, settings and project state). Everything here is for
-the host's surface thread.
+libraries, loading them, finding the controllers on the system's ports
+(detect.odin), applying the surfaces' claim tables to incoming MIDI
+(router.odin), and running the surfaces (lifecycle, MIDI to them, their
+timers, settings and project state). Everything here is for the host's
+surface thread, but `route`, which is for its MIDI thread.
+
+By hand:
 
 	lib, err := host.library_load("/path/Example.fsurf")
 	h: host.Host
@@ -32,7 +36,7 @@ EXTENSION :: ".fsurf"
 Library :: struct {
 	path:        string,
 	descriptors: []^abi.Descriptor, // what it offers, valid until it is unloaded
-	lib:         dynlib.Library,
+	lib:         dynlib.Library, // nil when linked in (`library_static`)
 	entry:       ^abi.Entry,
 	factory:     ^abi.Surface_Factory,
 	instances:   int, // surfaces made from it and not destroyed
@@ -59,23 +63,38 @@ library_load :: proc(path: string, allocator := context.allocator) -> (^Library,
 		dynlib.unload_library(lib)
 		return nil, .No_Entry
 	}
-	if !abi.version_is_compatible(entry.fsurf_version) || entry.init == nil || entry.get_factory == nil {
+	l, err := library_open(entry, path, allocator)
+	if err != .None {
 		dynlib.unload_library(lib)
+		return nil, err
+	}
+	l.lib = lib
+	return l, .None
+}
+
+// A surface library linked into the app itself (its `fsurf_entry`, under
+// another name if several are): used as a loaded one is, from the same
+// entry. `path` is what its entry's init is given. `library_unload` calls
+// its deinit.
+library_static :: proc(entry: ^abi.Entry, path := "", allocator := context.allocator) -> (^Library, Library_Error) {
+	if entry == nil do return nil, .No_Entry
+	return library_open(entry, path, allocator)
+}
+
+@(private)
+library_open :: proc(entry: ^abi.Entry, path: string, allocator := context.allocator) -> (^Library, Library_Error) {
+	if !abi.version_is_compatible(entry.fsurf_version) || entry.init == nil || entry.get_factory == nil {
 		return nil, .Incompatible_Version
 	}
 	cpath := strings.clone_to_cstring(path, context.temp_allocator)
-	if !entry.init(cpath) {
-		dynlib.unload_library(lib)
-		return nil, .Init_Failed
-	}
-	fail :: proc(entry: ^abi.Entry, lib: dynlib.Library, e: Library_Error) -> (^Library, Library_Error) {
+	if !entry.init(cpath) do return nil, .Init_Failed
+	fail :: proc(entry: ^abi.Entry, e: Library_Error) -> (^Library, Library_Error) {
 		if entry.deinit != nil do entry.deinit()
-		dynlib.unload_library(lib)
 		return nil, e
 	}
 	factory := (^abi.Surface_Factory)(entry.get_factory(abi.SURFACE_FACTORY_ID))
 	if factory == nil || factory.count == nil || factory.get_descriptor == nil || factory.create == nil {
-		return fail(entry, lib, .No_Factory)
+		return fail(entry, .No_Factory)
 	}
 	n := factory.count(factory)
 	descs := make([dynamic]^abi.Descriptor, 0, n, allocator)
@@ -83,12 +102,12 @@ library_load :: proc(path: string, allocator := context.allocator) -> (^Library,
 		d := factory.get_descriptor(factory, i)
 		if d == nil || d.struct_size < size_of(abi.Descriptor) || !abi.version_is_compatible(d.fsurf_version) || d.id == nil || d.name == nil {
 			delete(descs)
-			return fail(entry, lib, .Bad_Descriptor)
+			return fail(entry, .Bad_Descriptor)
 		}
 		append(&descs, d)
 	}
 	l := new(Library, allocator)
-	l^ = {path = strings.clone(path, allocator), descriptors = descs[:], lib = lib, entry = entry, factory = factory}
+	l^ = {path = strings.clone(path, allocator), descriptors = descs[:], entry = entry, factory = factory}
 	return l, .None
 }
 
@@ -98,7 +117,7 @@ library_unload :: proc(l: ^Library, allocator := context.allocator) -> bool {
 	if l == nil do return true
 	if l.instances > 0 do return false
 	if l.entry.deinit != nil do l.entry.deinit()
-	dynlib.unload_library(l.lib)
+	if l.lib != nil do dynlib.unload_library(l.lib)
 	delete(l.descriptors, allocator)
 	delete(l.path, allocator)
 	free(l, allocator)
