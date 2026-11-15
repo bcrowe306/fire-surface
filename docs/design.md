@@ -7,7 +7,7 @@ hosts the protocol. Ableton's MIDI Remote Scripts and FL Studio's MIDI
 scripting are the inspiration; CLAP is the model for how it is
 packaged, versioned and adopted.
 
-Status: stages 1 to 6 built (2026-11-15): see [protocol.md](protocol.md), [kit.md](kit.md), [daw.md](daw.md), [tools.md](tools.md) and [displays.md](displays.md). Stage 7 is the plan.
+Status: all seven stages built (2026-11-16): see [protocol.md](protocol.md), [kit.md](kit.md), [daw.md](daw.md), [tools.md](tools.md) and [displays.md](displays.md); Pads hosts it (fire_engine's docs/guides/surfaces.md). USB and HID in a host (libusb, hidapi) are the next step.
 
 ## Goals
 
@@ -412,10 +412,10 @@ Pads), documented, and pushed.
    rows and pages, Push 2's frames, PNG); the kit's displays and text
    displays; an example (`screen_odin`). Anti-aliased TrueType fonts and
    a libusb/hidapi backend wait (the backend comes with Pads).
-7. **Pads moves over**: `fire:surface` replaced, `route` on Pads' MIDI
+7. **Pads moves over** (built: fire_engine 49f3d8b): `fire:surface` replaced, `route` on Pads' MIDI
    path before the engine, controller ports found by `host_set_ports`,
    `fsurf.daw` offered from the Pads API, USB and HID through libusb and
-   hidapi, `pads_mini` ported,
+   hidapi (waits: displays are mirrored), `pads_mini` ported,
    `fire.pads` components, Settings → Control Surfaces, the guides.
 
 ## Questions for later

@@ -13,7 +13,7 @@ host that implements the protocol.
 - **Extensions**: a standard `fsurf.daw` (transport, tracks, devices, a
   launcher) and each host's own (for Pads: `fire.pads`).
 
-Status: stages 1 to 6 of [the design](docs/design.md) are built:
+Status: the seven stages of [the design](docs/design.md) are built, and Pads ([fire_engine](https://github.com/bcrowe306/fire_engine)) hosts it:
 - the protocol (version 0.3: loading, lifecycle, MIDI out, timers,
   settings, project state, extensions, the claim table, devices other than
   MIDI, displays)
