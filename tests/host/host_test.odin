@@ -42,6 +42,9 @@ abi_matches_the_header :: proc(t: ^testing.T) {
 		"fsurf_surface_factory_t" = abi.Surface_Factory,
 		"fsurf_entry_t"           = abi.Entry,
 		"fsurf_rule_t"            = abi.Rule,
+		"fsurf_daw_event_t"       = abi.Daw_Event,
+		"fsurf_daw_listener_t"    = abi.Daw_Listener,
+		"fsurf_daw_t"             = abi.Daw,
 	}
 	defer delete(types)
 	seen := 0
@@ -71,6 +74,52 @@ abi_matches_the_header :: proc(t: ^testing.T) {
 		n := 0
 		for line in strings.split_lines(string(stdout), context.temp_allocator) do if strings.has_prefix(line, fmt.tprintf("%s.", name)) do n += 1
 		testing.expectf(t, n == len(reflect.struct_field_names(id)), "%s: %d fields in C, %d in Odin", name, n, len(reflect.struct_field_names(id)))
+	}
+}
+
+// Every FSURF_DAW_* enumerator has an Odin one of the same name and value,
+// and every Odin one is in the header.
+@(test)
+daw_enums_match_the_header :: proc(t: ^testing.T) {
+	exe := filepath.join({BUILD, "layout.exe" when ODIN_OS == .Windows else "layout"}, context.temp_allocator) or_else ""
+	_, stdout, _, err := os.process_exec({command = {exe}}, context.temp_allocator)
+	if !testing.expect(t, err == nil) do return
+	Kind :: struct { prefix: string, id: typeid, bits: bool }
+	kinds := []Kind{
+		{"FSURF_DAW_TOPIC_", abi.Daw_Topic, true},
+		{"FSURF_DAW_CLIP_", abi.Clip_State, false},
+		{"FSURF_DAW_VIEW_", abi.Daw_View, false},
+		{"FSURF_DAW_", abi.Daw_Id, false},
+		{"FSURF_DAW_", abi.Daw_Action, false},
+		{"FSURF_DAW_", abi.Daw_Part, true},
+	}
+	seen := make(map[string]bool, context.temp_allocator)
+	n := 0
+	for line in strings.split_lines(string(stdout), context.temp_allocator) {
+		parts := strings.fields(line, context.temp_allocator)
+		if len(parts) != 3 || parts[0] != "E" do continue
+		n += 1
+		want, _ := strconv.parse_i64(parts[2])
+		found := false
+		for k in kinds {
+			if !strings.has_prefix(parts[1], k.prefix) do continue
+			rest := parts[1][len(k.prefix):]
+			for name, i in reflect.enum_field_names(k.id) {
+				if strings.to_upper(name, context.temp_allocator) != rest do continue
+				v := i64(reflect.enum_field_values(k.id)[i])
+				if k.bits do v = 1 << u64(v)
+				testing.expectf(t, v == want, "%s: %d in Odin (%v.%s), %d in C", parts[1], v, k.id, name, want)
+				seen[fmt.tprintf("%v.%s", k.id, name)] = true
+				found = true
+			}
+			if found do break
+		}
+		testing.expectf(t, found, "%s: no Odin enumerator", parts[1])
+	}
+	testing.expect(t, n > 60)
+	for k in kinds do for name in reflect.enum_field_names(k.id) {
+		if name == "None" do continue
+		testing.expectf(t, seen[fmt.tprintf("%v.%s", k.id, name)], "%v.%s: not in the header", k.id, name)
 	}
 }
 

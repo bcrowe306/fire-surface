@@ -13,25 +13,32 @@ host that implements the protocol.
 - **Extensions**: a standard `fsurf.daw` (transport, tracks, devices, a
   launcher) and each host's own (for Pads: `fire.pads`).
 
-Status: stages 1 to 3 of [the design](docs/design.md) are built: the
-protocol (version 0.2: loading, lifecycle, MIDI out, timers, settings,
-project state, extensions, the claim table), the Odin host library
-(scanning, detection by port names and identity replies, hot plug, the
-claim table on the MIDI path), the Odin kit (controls, layers and owner
-stacks, components, modes, skins, tasks, the claim table worked out from
-owners, MIDI, music and colour helpers) with a test host, and examples in
-C and Odin. See [docs/protocol.md](docs/protocol.md) and
-[docs/kit.md](docs/kit.md).
+Status: stages 1 to 4 of [the design](docs/design.md) are built:
+- the protocol (version 0.2: loading, lifecycle, MIDI out, timers,
+  settings, project state, extensions, the claim table)
+- the Odin host library (scanning, detection by port names and identity
+  replies, hot plug, the claim table on the MIDI path)
+- the Odin kit (controls, layers and owner stacks, components, modes,
+  skins, tasks, the claim table worked out from owners, helpers) with a
+  test host
+- the standard extension `fsurf.daw` (transport, tracks and mixer,
+  devices, launcher, scale, app), its kit components, and a fake DAW for
+  tests
+- examples in C and Odin
+
+See [protocol.md](docs/protocol.md), [kit.md](docs/kit.md) and
+[daw.md](docs/daw.md).
 
 ```
 include/fsurf.h      the protocol (C)
+include/fsurf_daw.h  the standard extension, fsurf.daw
 abi/                 the same in Odin
 host/                the host side, for Odin hosts: scan, load, detect, route MIDI, run surfaces
 surface/             the Odin kit, compiled into a surface
-testing/             a headless host for a surface's tests
-examples/            hello_c, hello_odin (the protocol by hand), grid_odin (the kit)
+testing/             a headless host for a surface's tests, with a fake fsurf.daw
+examples/            hello_c, hello_odin (the protocol by hand); grid_odin, keys_odin (the kit)
 tests/host           the host library with the examples and linked-in test surfaces; Odin vs the header's layout
-tests/kit            the kit, its helpers, and grid_odin through the test host
+tests/kit            the kit, its helpers, fsurf.daw, and the kit examples through the test host
 ```
 
 ```bash

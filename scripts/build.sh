@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the examples (.build/hello_c.fsurf, hello_odin.fsurf, grid_odin.fsurf) and the
+# Builds the examples (.build/hello_c.fsurf, hello_odin, grid_odin, keys_odin) and the
 # header's layout printer (.build/layout), which tests/host needs.
 #
 #   ./scripts/build.sh
@@ -38,4 +38,5 @@ cc_build tests/layout/layout.c "$OUT/layout$EXE"
 cc_build examples/hello_c/hello.c "$OUT/hello_c.fsurf" shared
 odin build examples/hello_odin -build-mode:dll -vet -strict-style -out:"$OUT/hello_odin.fsurf"
 odin build examples/grid_odin -build-mode:dll -vet -strict-style -out:"$OUT/grid_odin.fsurf"
+odin build examples/keys_odin -build-mode:dll -vet -strict-style -out:"$OUT/keys_odin.fsurf"
 echo "built $OUT"

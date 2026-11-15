@@ -125,6 +125,12 @@ Control_Surface :: struct {
 	own_skin:   bool,
 	temp:       virtual.Arena, // its temp allocator: freed after each call from the host
 	depth:      int,
+	// fsurf.daw (daw.odin): nil when the host doesn't offer it.
+	daw:        ^abi.Daw,
+	daw_listener: abi.Daw_Listener,
+	daw_subscribed: abi.Daw_Topics,
+	daw_subscribe_sent: bool,
+	ring:       Ring,
 }
 
 // A library of kit surfaces: what a .fsurf's entry points at.
@@ -300,6 +306,7 @@ c_init :: proc "c" (s: ^abi.Surface) -> bool {
 	cs := from(s)
 	context = enter(cs)
 	defer leave(cs)
+	daw_init(cs)
 	if cs.spec.setup != nil && !cs.spec.setup(cs) do return false
 	return true
 }
@@ -376,11 +383,13 @@ c_activate :: proc "c" (s: ^abi.Surface, ports: [^]abi.Port, count: u32) -> bool
 	for c in cs.controls do c.has_last = false // the device knows nothing: send everything again
 	for m in cs.spec.hello do send(cs, m)
 	cs.timer = cs.host.timer_start(cs.host, TICK_MS)
+	cs.daw_subscribe_sent = false
 	cs.rules_dirty = true
 	cs.rules_sent = false
 	clear(&cs.last_rules)
 	for c in cs.roots do component_activate(c)
 	if cs.spec.on_activate != nil do cs.spec.on_activate(cs)
+	ring_publish(cs)
 	flush(cs)
 	return true
 }
@@ -398,6 +407,8 @@ c_deactivate :: proc "c" (s: ^abi.Surface) {
 	cs.timer = 0
 	tasks_clear(cs)
 	cs.active = false
+	daw_update_subscription(cs) // none
+	if cs.daw != nil && cs.daw.set_ring != nil do cs.daw.set_ring(cs.host, 0, 0, 0, 0)
 	clear(&cs.ports)
 }
 
@@ -470,6 +481,7 @@ c_load :: proc "c" (s: ^abi.Surface, st: ^abi.Istream) -> bool {
 @(private)
 flush :: proc(cs: ^Control_Surface) {
 	if cs.active && cs.rules_dirty do publish_rules(cs)
+	if cs.active do daw_update_subscription(cs)
 }
 
 // ── What a surface does ───────────────────────────────────────────────

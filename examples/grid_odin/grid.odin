@@ -1,25 +1,25 @@
 /*
 A surface made with the kit, for a pretend controller "Grid": 4x4 pads,
-four encoders, a fader, and buttons (Shift, Play, Drum, Keys, Octave
-up/down). It shows the kit's parts working together:
+four encoders, a fader, and buttons. It shows the kit's parts working
+together, on the host's fsurf.daw when it has it:
 
-- Modes: Drum (the pads as drum pads) and Keys (a keyboard in a scale),
-  their buttons latching when tapped and momentary when held (Hybrid).
-  The pads are remapped by the claim table, so they play with no added
-  latency, and light as they're played.
-- Shift (a Modifier): while held, the encoders are fine (a layer of
-  higher priority over the normal one).
-- Play toggles, the fader picks up the value it was given, the octave
-  buttons only work in Keys mode.
+- Modes for the pads, their buttons latching when tapped and momentary
+  when held (Hybrid):
+  - Drum: the pads as drum pads, remapped by the claim table (no added
+    latency), lit as they're hit. Held, Repeat repeats them in time.
+  - Keys: a keyboard in the host's scale; the octave buttons work here.
+  - Session: a 4x4 window of the host's clips (the ring), launched by
+    the pads; the arrows move the window.
+- Play, Stop and Record: the host's transport.
+- The encoders: the selected device's parameters; with Shift held, the
+  volumes of the ring's four tracks (a layer of higher priority).
+- The fader: the selected track's volume, picked up where it is.
 
-Without the standard extension yet (stage 4), what it would change in a
-host it notifies ("Play", "Knob 1: 64").
+Without fsurf.daw, the drum and keys modes still play.
 
 	odin build examples/grid_odin -build-mode:dll -out:grid.fsurf
 */
 package grid_odin
-
-import "core:fmt"
 
 import abi "../../abi"
 import kit "../../surface"
@@ -27,17 +27,20 @@ import kit "../../surface"
 PAD_CHANNEL :: 9
 CC_SHIFT :: 80
 CC_PLAY :: 85
+CC_STOP :: 86
+CC_RECORD :: 87
+CC_REPEAT :: 88
+CC_SESSION :: 89
 CC_DRUM :: 90
 CC_KEYS :: 91
 CC_OCTAVE_UP :: 92
 CC_OCTAVE_DOWN :: 93
+CC_LEFT :: 100 // 100-103: left, right, up, down
 CC_KNOB :: 70 // 70-73
 CC_FADER :: 7 // and 39: 14 bits
 
 // The surface's own state.
 Grid :: struct {
-	knobs:    [4]f32, // 0-127
-	fader:    f32,
 	keyboard: ^kit.Keyboard,
 }
 
@@ -51,7 +54,7 @@ spec := kit.Spec{
 	id          = "org.fsurf.example.grid",
 	name        = "Grid (kit example)",
 	vendor      = "fire-surface",
-	version     = "0.3.0",
+	version     = "0.4.0",
 	url         = "https://github.com/bcrowe306/fire-surface",
 	description = "A pretend grid controller, made with the Odin kit",
 	ports       = {{role = "main", inputs = {"Grid*"}, outputs = {"Grid*"}}},
@@ -67,8 +70,13 @@ spec := kit.Spec{
 
 library := kit.Library{specs = {&spec}}
 
-// The library's one export.
-@(export, link_name = abi.ENTRY_SYMBOL)
+// The entry's symbol: fsurf_entry in a .fsurf, its own name linked in (two
+// surfaces linked into one app can't both be fsurf_entry).
+ENTRY_NAME :: abi.ENTRY_SYMBOL when ODIN_BUILD_MODE == .Dynamic else "grid_odin_entry"
+
+// The library's entry: its one export when built as a .fsurf; linked into an
+// app (or a test), used by name with `host.library_static(&fsurf_entry)`.
+@(export = ODIN_BUILD_MODE == .Dynamic, link_name = ENTRY_NAME)
 fsurf_entry := abi.Entry{
 	fsurf_version = abi.VERSION,
 	init          = proc "c" (path: cstring) -> bool { return kit.library_init(&library) },
@@ -76,106 +84,84 @@ fsurf_entry := abi.Entry{
 	get_factory   = proc "c" (id: cstring) -> rawptr { return kit.library_factory(&library, id) },
 }
 
+// What lights show: velocities of the pretend device.
+SKIN :: []struct { name: string, value: u8 }{
+	{"Transport.Play.On", 127}, {"Transport.Play.Off", 5}, {"Transport.Stop.On", 20}, {"Transport.Stop.Off", 5},
+	{"Transport.Record.On", 127}, {"Transport.Record.Off", 5},
+	{"Mode.On", 127}, {"Mode.Off", 5}, {"Shift.On", 127}, {"Shift.Off", 5}, {"Repeat.On", 127}, {"Repeat.Off", 5},
+	{"Drum.Pad", 10}, {"Drum.Hit", 127}, {"Repeat.Pad", 15}, {"Repeat.Hit", 127},
+	{"Keyboard.Root", 60}, {"Keyboard.In_Scale", 20}, {"Keyboard.Out_Of_Scale", 0}, {"Keyboard.Playing", 127},
+	{"Session.Clip.Empty", 0}, {"Session.Clip.Stopped", 30}, {"Session.Clip.Playing", 127}, {"Session.Clip.Queued", 90},
+	{"Session.Clip.Recording", 110}, {"Session.Clip.Record_Queued", 100}, {"Session.Clip.Stopping", 40},
+	{"Navigation.On", 127}, {"Navigation.Off", 0},
+}
+
 setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	g := new(Grid)
 	cs.user = g
-	g.knobs = 64
-
-	// What lights show: velocities of the pretend device.
 	skin := kit.skin_make()
-	kit.skin_set(skin, "Transport.Play.On", 127)
-	kit.skin_set(skin, "Transport.Play.Off", 5)
-	kit.skin_set(skin, "Mode.On", 127)
-	kit.skin_set(skin, "Mode.Off", 5)
-	kit.skin_set(skin, "Shift.On", 127)
-	kit.skin_set(skin, "Shift.Off", 5)
-	kit.skin_set(skin, "Drum.Pad", 10)
-	kit.skin_set(skin, "Drum.Hit", 127)
-	kit.skin_set(skin, "Keyboard.Root", 60)
-	kit.skin_set(skin, "Keyboard.In_Scale", 20)
-	kit.skin_set(skin, "Keyboard.Out_Of_Scale", 0)
-	kit.skin_set(skin, "Keyboard.Playing", 127)
+	for v in SKIN do kit.skin_set(skin, v.name, v.value)
 	kit.set_skin(cs, skin)
 
 	// The hardware.
 	pads := kit.matrix_make(cs, "Pads", 4, 4, proc(row, col: int) -> kit.Binding {
 		return kit.bind_note(u8(36 + (3 - row) * 4 + col), PAD_CHANNEL) // 36 at the bottom left
 	})
-	shift := kit.button(cs, "Shift", kit.bind_cc(CC_SHIFT))
-	play := kit.button(cs, "Play", kit.bind_cc(CC_PLAY), toggle = true)
-	drum_button := kit.button(cs, "Drum", kit.bind_cc(CC_DRUM))
-	keys_button := kit.button(cs, "Keys", kit.bind_cc(CC_KEYS))
-	up := kit.button(cs, "Octave Up", kit.bind_cc(CC_OCTAVE_UP))
-	down := kit.button(cs, "Octave Down", kit.bind_cc(CC_OCTAVE_DOWN))
+	button :: proc(cs: ^kit.Control_Surface, name: string, cc: u8) -> ^kit.Control { return kit.button(cs, name, kit.bind_cc(cc)) }
 	knobs: [4]^kit.Control
-	NAMES :: [4]string{"Knob 1", "Knob 2", "Knob 3", "Knob 4"}
-	SLOTS :: [4]string{"0", "1", "2", "3"}
-	names, slots := NAMES, SLOTS
-	for i in 0 ..< 4 do knobs[i] = kit.encoder(cs, names[i], kit.bind_cc(u8(CC_KNOB + i)))
+	for i in 0 ..< 4 do knobs[i] = kit.encoder(cs, "Knob", kit.bind_cc(u8(CC_KNOB + i)))
 	fader := kit.fader(cs, "Fader", kit.bind_cc14(CC_FADER), pickup = true)
 
-	// Transport: Play.
-	transport := kit.component_make(cs, "Transport")
-	kit.layer_bind(transport.layer, "play", play)
-	transport.on_owned = proc(c: ^kit.Component, slot: string, control: ^kit.Control) {
-		kit.light(control, "Transport.Play.On" if control.on else "Transport.Play.Off")
-	}
-	transport.on_event = proc(c: ^kit.Component, e: kit.Event) {
-		if e.kind != .Press do return
-		kit.notify(c.cs, "Play" if e.control.on else "Stop")
-		kit.light(e.control, "Transport.Play.On" if e.control.on else "Transport.Play.Off")
-	}
+	// The transport.
+	transport := kit.transport_make(cs)
+	kit.layer_bind(transport.layer, "play", button(cs, "Play", CC_PLAY))
+	kit.layer_bind(transport.layer, "stop", button(cs, "Stop", CC_STOP))
+	kit.layer_bind(transport.layer, "record", button(cs, "Record", CC_RECORD))
 
-	// The encoders, coarse; and fine under Shift (priority 1 covers 0).
-	coarse := kit.component_make(cs, "Knobs")
-	fine := kit.component_make(cs, "Fine Knobs", priority = 1)
+	// The knobs: the device's parameters; under Shift, the ring's volumes.
+	device := kit.device_make(cs, "Device", 4)
+	volumes := kit.mixer_make(cs, "Volumes", 4, priority = 1)
 	for k, i in knobs {
-		kit.layer_bind(coarse.layer, slots[i], k)
-		kit.layer_bind(fine.layer, slots[i], k)
+		kit.device_bind_param(device, i, k)
+		kit.mixer_bind(volumes, i, .Volume, k)
 	}
-	knob_turned :: proc(c: ^kit.Component, e: kit.Event, scale: f32, label: string) {
-		if e.kind != .Delta do return
-		g := (^Grid)(c.cs.user)
-		i := int(e.control.binding.number) - CC_KNOB
-		g.knobs[i] = clamp(g.knobs[i] + f32(e.delta) * scale, 0, 127)
-		kit.notify(c.cs, fmt.tprintf("%s %d: %.1f", label, i + 1, g.knobs[i]))
-	}
-	coarse.on_event = proc(c: ^kit.Component, e: kit.Event) { knob_turned(c, e, 1, "Knob") }
-	fine.on_event = proc(c: ^kit.Component, e: kit.Event) { knob_turned(c, e, 0.1, "Fine") }
-	shift_mod := kit.modifier_make(cs, "Shift", shift, {fine})
+	shift := kit.modifier_make(cs, "Shift", button(cs, "Shift", CC_SHIFT), {volumes})
 
-	// The fader: soft takeover from the value it was given.
-	faders := kit.component_make(cs, "Fader")
-	kit.layer_bind(faders.layer, "fader", fader)
-	faders.on_activate = proc(c: ^kit.Component) {
-		kit.set_value(kit.layer_control(c.layer, "fader"), 0.5) // what a host would give it
-	}
-	faders.on_event = proc(c: ^kit.Component, e: kit.Event) {
-		if e.kind != .Value do return
-		(^Grid)(c.cs.user).fader = e.value
-		kit.notify(c.cs, fmt.tprintf("Fader: %.3f", e.value))
-	}
+	// The fader: the selected track's volume.
+	strip := kit.mixer_make(cs, "Strip", 1, follow_selection = true)
+	kit.mixer_bind(strip, 0, .Volume, fader)
 
-	// The pads: drum pads or a keyboard; octave buttons with the keyboard.
+	// The pads' modes.
 	drums := kit.drum_pads_make(cs, "Drum", pads)
+	repeat := kit.note_repeat_make(cs, "Note Repeat", pads, rate = 0.25, priority = 1)
+	repeat_button := kit.modifier_make(cs, "Repeat", button(cs, "Repeat", CC_REPEAT), {repeat})
+
 	g.keyboard = kit.keyboard_make(cs, "Keys", pads, kit.scale_named("Minor"), root = 0, octave = 3)
+	kit.keyboard_follow_host(g.keyboard)
 	octave := kit.component_make(cs, "Octave")
 	octave.user = g
-	kit.layer_bind(octave.layer, "up", up)
-	kit.layer_bind(octave.layer, "down", down)
+	kit.layer_bind(octave.layer, "up", button(cs, "Octave Up", CC_OCTAVE_UP))
+	kit.layer_bind(octave.layer, "down", button(cs, "Octave Down", CC_OCTAVE_DOWN))
 	octave.on_owned = proc(c: ^kit.Component, slot: string, control: ^kit.Control) { kit.light_value(control, 20) }
 	octave.on_event = proc(c: ^kit.Component, e: kit.Event) {
 		if e.kind != .Press do return
 		k := (^Grid)(c.user).keyboard
 		o := clamp(k.octave + (1 if e.slot == "up" else -1), -1, 8)
 		kit.keyboard_set(k, k.scale, k.root, o, k.in_key)
-		kit.notify(c.cs, fmt.tprintf("Octave %d", o))
+		kit.notify(c.cs, "Octave Up" if e.slot == "up" else "Octave Down")
 	}
+
+	session := kit.launcher_make(cs, "Session", pads)
+	nav := kit.navigation_make(cs, tracks = 1, scenes = 1)
+	for slot, i in ([4]string{"left", "right", "up", "down"}) do kit.layer_bind(nav.layer, slot, button(cs, slot, u8(CC_LEFT + i)))
+
 	modes := kit.modes_make(cs, "Pads")
-	kit.modes_add(modes, "drum", {drums}, drum_button, .Hybrid)
-	kit.modes_add(modes, "keys", {g.keyboard, octave}, keys_button, .Hybrid)
+	kit.modes_add(modes, "drum", {drums, &repeat_button.component}, button(cs, "Drum", CC_DRUM), .Hybrid)
+	kit.modes_add(modes, "keys", {g.keyboard, octave}, button(cs, "Keys", CC_KEYS), .Hybrid)
+	kit.modes_add(modes, "session", {session}, button(cs, "Session", CC_SESSION), .Hybrid)
 	modes.on_change = proc(m: ^kit.Modes, from, to: int) { kit.notify(m.cs, kit.modes_current(m)) }
 
-	for c in ([?]^kit.Component{transport, coarse, &shift_mod.component, faders, &modes.component}) do kit.surface_add(cs, c)
+	kit.ring_setup(cs, 4, 4) // the host's tracks and scenes it shows at once
+	for c in ([?]^kit.Component{transport, device, &shift.component, strip, nav, &modes.component}) do kit.surface_add(cs, c)
 	return true
 }

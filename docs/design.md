@@ -7,7 +7,7 @@ hosts the protocol. Ableton's MIDI Remote Scripts and FL Studio's MIDI
 scripting are the inspiration; CLAP is the model for how it is
 packaged, versioned and adopted.
 
-Status: stages 1 to 3 built (2026-11-15): see [protocol.md](protocol.md) and [kit.md](kit.md). The rest is the plan.
+Status: stages 1 to 4 built (2026-11-15): see [protocol.md](protocol.md), [kit.md](kit.md) and [daw.md](daw.md). The rest is the plan.
 
 ## Goals
 
@@ -388,17 +388,23 @@ Pads), documented, and pushed.
    (`grid_odin`). Device palettes wait for the devices that need them
    (see the questions below); Note_Repeat comes with `fsurf.daw`'s
    transport.
-4. **`fsurf.daw`**: the extension's header and the kit's wrappers; Pads
-   offers it from the Pads API; built-in components on it; examples: a
-   keyboard with transport and faders (any host), a grid controller with
-   session, drum and keyboard modes.
+4. **`fsurf.daw`** (built): the extension's header (`fsurf_daw.h`: ids
+   read and set, actions, the ring, events by topic) and the kit's
+   wrappers; built-in components on it (Transport, Mixer and channel
+   strips, Device, Launcher, Navigation, App, Note_Repeat, a Keyboard in
+   the host's scale); a fake DAW in the test host; examples: a keyboard
+   with transport, faders and knobs (`keys_odin`, any host with the
+   extension) and the grid with session, drum and keyboard modes
+   (`grid_odin`). Pads offering it from the Pads API moved to stage 7,
+   with the rest of Pads' side.
 5. **Tools**: hot reload, the MIDI monitor, the virtual controller
    (`fsurf.layout`).
 6. **Displays**: the draw kit, USB bulk and HID through the host, frame
    pacing, mirrored in the virtual controller; an example display
    surface.
 7. **Pads moves over**: `fire:surface` replaced, `route` on Pads' MIDI
-   path before the engine, controller ports found by `host_set_ports`, `pads_mini` ported,
+   path before the engine, controller ports found by `host_set_ports`,
+   `fsurf.daw` offered from the Pads API, `pads_mini` ported,
    `fire.pads` components, Settings → Control Surfaces, the guides.
 
 ## Questions for later

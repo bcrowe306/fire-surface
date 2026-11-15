@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stddef.h>
 #include "fsurf.h"
+#include "fsurf_daw.h"
 #define S(t) printf("%s size %zu align %zu\n", #t, sizeof(t), _Alignof(t));
 #define F(t, f) printf("%s.%s %zu\n", #t, #f, offsetof(t, f));
 int main(void) {
@@ -110,5 +111,95 @@ int main(void) {
 	F(fsurf_entry_t, init)
 	F(fsurf_entry_t, deinit)
 	F(fsurf_entry_t, get_factory)
+	S(fsurf_daw_event_t)
+	F(fsurf_daw_event_t, struct_size)
+	F(fsurf_daw_event_t, topic)
+	F(fsurf_daw_event_t, id)
+	F(fsurf_daw_event_t, a)
+	F(fsurf_daw_event_t, b)
+	S(fsurf_daw_listener_t)
+	F(fsurf_daw_listener_t, user)
+	F(fsurf_daw_listener_t, on_event)
+	S(fsurf_daw_t)
+	F(fsurf_daw_t, struct_size)
+	F(fsurf_daw_t, parts)
+	F(fsurf_daw_t, get)
+	F(fsurf_daw_t, get_text)
+	F(fsurf_daw_t, set)
+	F(fsurf_daw_t, action)
+	F(fsurf_daw_t, set_ring)
+	F(fsurf_daw_t, subscribe)
+	printf("E FSURF_DAW_TRANSPORT %d\n", (int)FSURF_DAW_TRANSPORT);
+	printf("E FSURF_DAW_TRACKS %d\n", (int)FSURF_DAW_TRACKS);
+	printf("E FSURF_DAW_DEVICES %d\n", (int)FSURF_DAW_DEVICES);
+	printf("E FSURF_DAW_LAUNCHER %d\n", (int)FSURF_DAW_LAUNCHER);
+	printf("E FSURF_DAW_NOTES %d\n", (int)FSURF_DAW_NOTES);
+	printf("E FSURF_DAW_APP %d\n", (int)FSURF_DAW_APP);
+	printf("E FSURF_DAW_PLAYING %d\n", (int)FSURF_DAW_PLAYING);
+	printf("E FSURF_DAW_RECORDING %d\n", (int)FSURF_DAW_RECORDING);
+	printf("E FSURF_DAW_LOOP %d\n", (int)FSURF_DAW_LOOP);
+	printf("E FSURF_DAW_METRONOME %d\n", (int)FSURF_DAW_METRONOME);
+	printf("E FSURF_DAW_TEMPO %d\n", (int)FSURF_DAW_TEMPO);
+	printf("E FSURF_DAW_POSITION %d\n", (int)FSURF_DAW_POSITION);
+	printf("E FSURF_DAW_SIGNATURE_NUMERATOR %d\n", (int)FSURF_DAW_SIGNATURE_NUMERATOR);
+	printf("E FSURF_DAW_SIGNATURE_DENOMINATOR %d\n", (int)FSURF_DAW_SIGNATURE_DENOMINATOR);
+	printf("E FSURF_DAW_TRACK_COUNT %d\n", (int)FSURF_DAW_TRACK_COUNT);
+	printf("E FSURF_DAW_TRACK_NAME %d\n", (int)FSURF_DAW_TRACK_NAME);
+	printf("E FSURF_DAW_TRACK_COLOR %d\n", (int)FSURF_DAW_TRACK_COLOR);
+	printf("E FSURF_DAW_SELECTED_TRACK %d\n", (int)FSURF_DAW_SELECTED_TRACK);
+	printf("E FSURF_DAW_TRACK_MUTE %d\n", (int)FSURF_DAW_TRACK_MUTE);
+	printf("E FSURF_DAW_TRACK_SOLO %d\n", (int)FSURF_DAW_TRACK_SOLO);
+	printf("E FSURF_DAW_TRACK_ARM %d\n", (int)FSURF_DAW_TRACK_ARM);
+	printf("E FSURF_DAW_TRACK_VOLUME %d\n", (int)FSURF_DAW_TRACK_VOLUME);
+	printf("E FSURF_DAW_TRACK_PAN %d\n", (int)FSURF_DAW_TRACK_PAN);
+	printf("E FSURF_DAW_SEND_COUNT %d\n", (int)FSURF_DAW_SEND_COUNT);
+	printf("E FSURF_DAW_TRACK_SEND %d\n", (int)FSURF_DAW_TRACK_SEND);
+	printf("E FSURF_DAW_TRACK_METER %d\n", (int)FSURF_DAW_TRACK_METER);
+	printf("E FSURF_DAW_DEVICE_COUNT %d\n", (int)FSURF_DAW_DEVICE_COUNT);
+	printf("E FSURF_DAW_DEVICE_NAME %d\n", (int)FSURF_DAW_DEVICE_NAME);
+	printf("E FSURF_DAW_SELECTED_DEVICE %d\n", (int)FSURF_DAW_SELECTED_DEVICE);
+	printf("E FSURF_DAW_DEVICE_ON %d\n", (int)FSURF_DAW_DEVICE_ON);
+	printf("E FSURF_DAW_PARAM_COUNT %d\n", (int)FSURF_DAW_PARAM_COUNT);
+	printf("E FSURF_DAW_PARAM_NAME %d\n", (int)FSURF_DAW_PARAM_NAME);
+	printf("E FSURF_DAW_PARAM_VALUE %d\n", (int)FSURF_DAW_PARAM_VALUE);
+	printf("E FSURF_DAW_PARAM_STEPS %d\n", (int)FSURF_DAW_PARAM_STEPS);
+	printf("E FSURF_DAW_PARAM_DEFAULT %d\n", (int)FSURF_DAW_PARAM_DEFAULT);
+	printf("E FSURF_DAW_PARAM_AUTOMATED %d\n", (int)FSURF_DAW_PARAM_AUTOMATED);
+	printf("E FSURF_DAW_SCENE_COUNT %d\n", (int)FSURF_DAW_SCENE_COUNT);
+	printf("E FSURF_DAW_SCENE_NAME %d\n", (int)FSURF_DAW_SCENE_NAME);
+	printf("E FSURF_DAW_CLIP_STATE %d\n", (int)FSURF_DAW_CLIP_STATE);
+	printf("E FSURF_DAW_CLIP_COLOR %d\n", (int)FSURF_DAW_CLIP_COLOR);
+	printf("E FSURF_DAW_CLIP_NAME %d\n", (int)FSURF_DAW_CLIP_NAME);
+	printf("E FSURF_DAW_SCALE_ROOT %d\n", (int)FSURF_DAW_SCALE_ROOT);
+	printf("E FSURF_DAW_SCALE_MASK %d\n", (int)FSURF_DAW_SCALE_MASK);
+	printf("E FSURF_DAW_SCALE_NAME %d\n", (int)FSURF_DAW_SCALE_NAME);
+	printf("E FSURF_DAW_UNDO %d\n", (int)FSURF_DAW_UNDO);
+	printf("E FSURF_DAW_REDO %d\n", (int)FSURF_DAW_REDO);
+	printf("E FSURF_DAW_SAVE %d\n", (int)FSURF_DAW_SAVE);
+	printf("E FSURF_DAW_TAP_TEMPO %d\n", (int)FSURF_DAW_TAP_TEMPO);
+	printf("E FSURF_DAW_LAUNCH_CLIP %d\n", (int)FSURF_DAW_LAUNCH_CLIP);
+	printf("E FSURF_DAW_STOP_TRACK %d\n", (int)FSURF_DAW_STOP_TRACK);
+	printf("E FSURF_DAW_LAUNCH_SCENE %d\n", (int)FSURF_DAW_LAUNCH_SCENE);
+	printf("E FSURF_DAW_STOP_ALL_CLIPS %d\n", (int)FSURF_DAW_STOP_ALL_CLIPS);
+	printf("E FSURF_DAW_PARAM_RESET %d\n", (int)FSURF_DAW_PARAM_RESET);
+	printf("E FSURF_DAW_SHOW_VIEW %d\n", (int)FSURF_DAW_SHOW_VIEW);
+	printf("E FSURF_DAW_CLIP_EMPTY %d\n", (int)FSURF_DAW_CLIP_EMPTY);
+	printf("E FSURF_DAW_CLIP_STOPPED %d\n", (int)FSURF_DAW_CLIP_STOPPED);
+	printf("E FSURF_DAW_CLIP_PLAYING %d\n", (int)FSURF_DAW_CLIP_PLAYING);
+	printf("E FSURF_DAW_CLIP_QUEUED %d\n", (int)FSURF_DAW_CLIP_QUEUED);
+	printf("E FSURF_DAW_CLIP_RECORDING %d\n", (int)FSURF_DAW_CLIP_RECORDING);
+	printf("E FSURF_DAW_CLIP_RECORD_QUEUED %d\n", (int)FSURF_DAW_CLIP_RECORD_QUEUED);
+	printf("E FSURF_DAW_CLIP_STOPPING %d\n", (int)FSURF_DAW_CLIP_STOPPING);
+	printf("E FSURF_DAW_VIEW_MIXER %d\n", (int)FSURF_DAW_VIEW_MIXER);
+	printf("E FSURF_DAW_VIEW_SONG %d\n", (int)FSURF_DAW_VIEW_SONG);
+	printf("E FSURF_DAW_VIEW_LAUNCHER %d\n", (int)FSURF_DAW_VIEW_LAUNCHER);
+	printf("E FSURF_DAW_VIEW_DEVICES %d\n", (int)FSURF_DAW_VIEW_DEVICES);
+	printf("E FSURF_DAW_TOPIC_TRANSPORT %d\n", (int)FSURF_DAW_TOPIC_TRANSPORT);
+	printf("E FSURF_DAW_TOPIC_TRACKS %d\n", (int)FSURF_DAW_TOPIC_TRACKS);
+	printf("E FSURF_DAW_TOPIC_MIXER %d\n", (int)FSURF_DAW_TOPIC_MIXER);
+	printf("E FSURF_DAW_TOPIC_DEVICES %d\n", (int)FSURF_DAW_TOPIC_DEVICES);
+	printf("E FSURF_DAW_TOPIC_PARAMETERS %d\n", (int)FSURF_DAW_TOPIC_PARAMETERS);
+	printf("E FSURF_DAW_TOPIC_LAUNCHER %d\n", (int)FSURF_DAW_TOPIC_LAUNCHER);
+	printf("E FSURF_DAW_TOPIC_NOTES %d\n", (int)FSURF_DAW_TOPIC_NOTES);
 	return 0;
 }

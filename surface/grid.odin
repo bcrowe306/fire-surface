@@ -1,5 +1,7 @@
 package surface
 
+import abi "../abi"
+
 // ── Drum pads ─────────────────────────────────────────────────────────
 
 // A grid as drum pads: each pad remapped (claim table Remap: no latency)
@@ -77,6 +79,29 @@ Keyboard :: struct {
 	channel:       u8, // 1-16, 0 = own
 	velocity_map:  ^[128]u8,
 	playing:       [128]u8, // how many pads hold each note
+	host_scale:    Scale, // the host's, when it follows it
+	host_steps:    [12]u8,
+}
+
+// Makes a keyboard take its scale and root from the host (fsurf.daw's
+// notes), now and whenever they change.
+keyboard_follow_host :: proc(k: ^Keyboard) {
+	k.daw_topics += {.Notes}
+	k.on_daw = proc(c: ^Component, e: abi.Daw_Event) { keyboard_from_host((^Keyboard)(c)) }
+	k.on_activate = proc(c: ^Component) { keyboard_from_host((^Keyboard)(c)) }
+}
+
+@(private)
+keyboard_from_host :: proc(k: ^Keyboard) {
+	if !has_daw(k.cs, .Notes) do return
+	mask := u32(daw_get(k.cs, .Scale_Mask)) | 1 // the root is always in it
+	n := 0
+	for i in 0 ..< 12 do if mask & (1 << u32(i)) != 0 {
+		k.host_steps[n] = u8(i)
+		n += 1
+	}
+	k.host_scale = {name = "Host", steps = k.host_steps[:n]}
+	keyboard_set(k, &k.host_scale, int(daw_get(k.cs, .Scale_Root)), k.octave, k.in_key)
 }
 
 // A keyboard on a matrix, in `scale` (nil: Major) on `root`.

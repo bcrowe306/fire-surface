@@ -40,6 +40,7 @@ Test_Host :: struct {
 	logged:     [dynamic]string,
 	extensions: [dynamic]Extension,
 	ports:      [dynamic]host.Port_Assignment,
+	daw:        ^Fake_Daw, // `daw_enable`'s, or nil
 }
 
 // An extension the test host offers.
@@ -83,7 +84,9 @@ start :: proc(th: ^Test_Host, entry: ^abi.Entry, surface_id: string, ports: []ho
 			append(&th.ports, p)
 		}
 	}
-	return host.instance_activate(th.s, th.ports[:])
+	if !host.instance_activate(th.s, th.ports[:]) do return false
+	daw_flush(th)
+	return true
 }
 
 // Destroys the surface (deactivating it) and frees everything.
@@ -97,6 +100,7 @@ stop :: proc(th: ^Test_Host) {
 	delete(th.sent); delete(th.injected); delete(th.notified); delete(th.logged)
 	delete(th.extensions)
 	delete(th.ports)
+	daw_destroy(th)
 }
 
 // Offers an extension (before `start` for the surface's init to see it).
@@ -117,6 +121,7 @@ midi_in :: proc(th: ^Test_Host, bytes: []u8, port := 0) -> host.Route {
 		r.host = c
 	}
 	host.host_update(&th.h)
+	daw_flush(th)
 	return r
 }
 
@@ -129,6 +134,7 @@ advance :: proc(th: ^Test_Host, ms: u32) {
 		th.now += step
 		left -= step
 		host.host_update(&th.h)
+		daw_flush(th)
 	}
 }
 

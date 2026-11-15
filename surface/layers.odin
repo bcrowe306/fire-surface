@@ -1,5 +1,7 @@
 package surface
 
+import abi "../abi"
+
 /*
 Components own controls through layers. A layer names slots ("play")
 bound to controls, and has a priority. Each control keeps a stack of the
@@ -56,6 +58,11 @@ Component :: struct {
 	// Frees what it holds, when the surface is destroyed (built-in ones
 	// free themselves).
 	on_free:       proc(c: ^Component),
+	// fsurf.daw: the topics it follows while active, and their events.
+	daw_topics:    abi.Daw_Topics,
+	on_daw:        proc(c: ^Component, e: abi.Daw_Event),
+	// The ring moved (or was sized): redraw what shows it.
+	on_ring:       proc(c: ^Component),
 }
 
 // A component and its layer (of `priority`). The surface frees it.

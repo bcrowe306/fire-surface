@@ -35,7 +35,14 @@ fsurf_entry := abi.Entry{
 
 `odin build . -build-mode:dll -out:Grid.fsurf` makes the library; one
 library can hold several specs. The same entry works linked into an app
-(`host.library_static(&fsurf_entry)`) or a test.
+(`host.library_static(&fsurf_entry)`) or a test. To link several surfaces
+into one app, export the symbol only in a .fsurf build, as the examples do:
+
+```odin
+ENTRY_NAME :: abi.ENTRY_SYMBOL when ODIN_BUILD_MODE == .Dynamic else "grid_entry"
+@(export = ODIN_BUILD_MODE == .Dynamic, link_name = ENTRY_NAME)
+fsurf_entry := abi.Entry{...}
+```
 
 `setup` builds the surface's controls, components and modes. The spec's
 other procedures (`on_activate`, `on_deactivate`, `on_idle`, `on_midi`
@@ -163,8 +170,9 @@ Modes component, which remembers its own mode. Mode buttons light with
   a note being played lights `".Playing"`. `keyboard_set` changes the
   scale, root, octave or layout.
 
-Components that need the host's DAW (Transport, Mixer, Device, Launcher)
-come with the `fsurf.daw` extension in stage 4.
+Components on the host's DAW (Transport, Mixer, Device, Launcher,
+Navigation, App, Note_Repeat, and a Keyboard in the host's scale) use the
+`fsurf.daw` extension: see [daw.md](daw.md).
 
 ## Skins
 

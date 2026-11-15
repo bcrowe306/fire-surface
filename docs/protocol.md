@@ -199,8 +199,10 @@ host.host_update(&h)
 - [`examples/hello_c`](../examples/hello_c/hello.c): a surface in C.
 - [`examples/hello_odin`](../examples/hello_odin/hello.odin): the same in
   Odin (`odin build examples/hello_odin -build-mode:dll -out:hello.fsurf`).
-- [`examples/grid_odin`](../examples/grid_odin/grid.odin): a surface made
-  with the Odin kit ([kit.md](kit.md)).
+- [`examples/grid_odin`](../examples/grid_odin/grid.odin) and
+  [`examples/keys_odin`](../examples/keys_odin/keys.odin): surfaces made
+  with the Odin kit ([kit.md](kit.md)) on the standard extension
+  ([daw.md](daw.md)).
 
 ```bash
 ./scripts/build.sh   # the examples and the layout printer, into .build/

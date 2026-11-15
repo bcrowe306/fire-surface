@@ -101,6 +101,7 @@ Control :: struct {
 	encoding:     Encoding, // Encoder
 	acceleration: f32, // Encoder: steps that come within 40 ms are multiplied by this (0 or 1 = none)
 	pickup:       bool, // Fader: ignored until it reaches the value `set_value` gave (soft takeover)
+	ring:         bool, // shows a value (an LED ring, a motor): components send it theirs with `set_position`
 
 	// State.
 	pressed:    bool,

@@ -859,3 +859,25 @@ a_kit_surface_loads_from_its_library :: proc(t: ^testing.T) {
 	testing.expect(t, host.library_unload(lib))
 	fake_destroy(&f)
 }
+
+// A surface that requires fsurf.daw is offered only by a host that has it.
+@(test)
+a_surface_requiring_the_daw_extension_waits_for_a_host_with_it :: proc(t: ^testing.T) {
+	lib, err := host.library_load(example_path("keys_odin.fsurf"))
+	if !testing.expectf(t, err == .None, "keys_odin.fsurf: %v", err) do return
+	f: Fake
+	h: host.Host
+	host.host_init(&h, fake_config(&f))
+	host.host_add_library(&h, lib)
+	host.host_set_ports(&h, {{1, "Keys 25 MIDI"}}, {{2, "Keys 25 MIDI"}})
+	testing.expect_value(t, len(host.host_devices(&h)), 0)
+	h.config.has_extension = proc(user: rawptr, id: string) -> bool { return id == abi.DAW_ID }
+	host.host_set_ports(&h, {{1, "Keys 25 MIDI"}}, {{2, "Keys 25 MIDI"}})
+	if testing.expect_value(t, len(host.host_devices(&h)), 1) do testing.expect_value(t, host.host_devices(&h)[0].state, host.Device_State.Active)
+	r := host.route(&h, 1, {0x90, 60, 100}, 0, nil) // a key: the host's
+	testing.expect(t, r.host != nil && !r.surface)
+	clear_sent(&f)
+	host.host_destroy(&h)
+	testing.expect(t, host.library_unload(lib))
+	fake_destroy(&f)
+}
