@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include "fsurf.h"
 #include "fsurf_daw.h"
+#include "fsurf_layout.h"
 #define S(t) printf("%s size %zu align %zu\n", #t, sizeof(t), _Alignof(t));
 #define F(t, f) printf("%s.%s %zu\n", #t, #f, offsetof(t, f));
 int main(void) {
@@ -129,6 +130,37 @@ int main(void) {
 	F(fsurf_daw_t, action)
 	F(fsurf_daw_t, set_ring)
 	F(fsurf_daw_t, subscribe)
+	S(fsurf_layout_control_t)
+	F(fsurf_layout_control_t, struct_size)
+	F(fsurf_layout_control_t, name)
+	F(fsurf_layout_control_t, kind)
+	F(fsurf_layout_control_t, x)
+	F(fsurf_layout_control_t, y)
+	F(fsurf_layout_control_t, w)
+	F(fsurf_layout_control_t, h)
+	F(fsurf_layout_control_t, port)
+	F(fsurf_layout_control_t, message)
+	F(fsurf_layout_control_t, channel)
+	F(fsurf_layout_control_t, number)
+	F(fsurf_layout_control_t, encoding)
+	F(fsurf_layout_control_t, flags)
+	S(fsurf_layout_state_t)
+	F(fsurf_layout_state_t, struct_size)
+	F(fsurf_layout_state_t, value)
+	F(fsurf_layout_state_t, channel)
+	F(fsurf_layout_state_t, rgb)
+	F(fsurf_layout_state_t, has_rgb)
+	F(fsurf_layout_state_t, pressed)
+	F(fsurf_layout_state_t, position)
+	S(fsurf_layout_t)
+	F(fsurf_layout_t, struct_size)
+	F(fsurf_layout_t, width)
+	F(fsurf_layout_t, height)
+	F(fsurf_layout_t, count)
+	F(fsurf_layout_t, get)
+	F(fsurf_layout_t, find)
+	F(fsurf_layout_t, owner)
+	F(fsurf_layout_t, state)
 	printf("E FSURF_DAW_TRANSPORT %d\n", (int)FSURF_DAW_TRANSPORT);
 	printf("E FSURF_DAW_TRACKS %d\n", (int)FSURF_DAW_TRACKS);
 	printf("E FSURF_DAW_DEVICES %d\n", (int)FSURF_DAW_DEVICES);
@@ -201,5 +233,16 @@ int main(void) {
 	printf("E FSURF_DAW_TOPIC_PARAMETERS %d\n", (int)FSURF_DAW_TOPIC_PARAMETERS);
 	printf("E FSURF_DAW_TOPIC_LAUNCHER %d\n", (int)FSURF_DAW_TOPIC_LAUNCHER);
 	printf("E FSURF_DAW_TOPIC_NOTES %d\n", (int)FSURF_DAW_TOPIC_NOTES);
+	printf("E FSURF_LAYOUT_BUTTON %d\n", (int)FSURF_LAYOUT_BUTTON);
+	printf("E FSURF_LAYOUT_PAD %d\n", (int)FSURF_LAYOUT_PAD);
+	printf("E FSURF_LAYOUT_ENCODER %d\n", (int)FSURF_LAYOUT_ENCODER);
+	printf("E FSURF_LAYOUT_FADER %d\n", (int)FSURF_LAYOUT_FADER);
+	printf("E FSURF_LAYOUT_OTHER %d\n", (int)FSURF_LAYOUT_OTHER);
+	printf("E FSURF_LAYOUT_ABSOLUTE %d\n", (int)FSURF_LAYOUT_ABSOLUTE);
+	printf("E FSURF_LAYOUT_TWOS_COMPLEMENT %d\n", (int)FSURF_LAYOUT_TWOS_COMPLEMENT);
+	printf("E FSURF_LAYOUT_SIGNED_BIT %d\n", (int)FSURF_LAYOUT_SIGNED_BIT);
+	printf("E FSURF_LAYOUT_BINARY_OFFSET %d\n", (int)FSURF_LAYOUT_BINARY_OFFSET);
+	printf("E FSURF_LAYOUT_FOURTEEN_BIT %d\n", (int)FSURF_LAYOUT_FOURTEEN_BIT);
+	printf("E FSURF_LAYOUT_TOGGLE %d\n", (int)FSURF_LAYOUT_TOGGLE);
 	return 0;
 }

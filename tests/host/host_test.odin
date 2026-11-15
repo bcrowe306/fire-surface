@@ -45,6 +45,9 @@ abi_matches_the_header :: proc(t: ^testing.T) {
 		"fsurf_daw_event_t"       = abi.Daw_Event,
 		"fsurf_daw_listener_t"    = abi.Daw_Listener,
 		"fsurf_daw_t"             = abi.Daw,
+		"fsurf_layout_control_t"  = abi.Layout_Control,
+		"fsurf_layout_state_t"    = abi.Layout_State,
+		"fsurf_layout_t"          = abi.Layout,
 	}
 	defer delete(types)
 	seen := 0
@@ -77,7 +80,7 @@ abi_matches_the_header :: proc(t: ^testing.T) {
 	}
 }
 
-// Every FSURF_DAW_* enumerator has an Odin one of the same name and value,
+// Every FSURF_DAW_* and FSURF_LAYOUT_* enumerator has an Odin one of the same name and value,
 // and every Odin one is in the header.
 @(test)
 daw_enums_match_the_header :: proc(t: ^testing.T) {
@@ -86,6 +89,9 @@ daw_enums_match_the_header :: proc(t: ^testing.T) {
 	if !testing.expect(t, err == nil) do return
 	Kind :: struct { prefix: string, id: typeid, bits: bool }
 	kinds := []Kind{
+		{"FSURF_LAYOUT_", abi.Layout_Kind, false},
+		{"FSURF_LAYOUT_", abi.Layout_Encoding, false},
+		{"FSURF_LAYOUT_", abi.Layout_Flag, true},
 		{"FSURF_DAW_TOPIC_", abi.Daw_Topic, true},
 		{"FSURF_DAW_CLIP_", abi.Clip_State, false},
 		{"FSURF_DAW_VIEW_", abi.Daw_View, false},

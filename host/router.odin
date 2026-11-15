@@ -26,6 +26,7 @@ Route :: struct {
 	host:    []u8, // what the app's own MIDI handling gets (empty: nothing)
 	surface: bool, // a surface gets it (queued for its thread)
 	action:  abi.Rule_Action, // the rule's (Pass when none matched)
+	rule:    int, // which of the surface's rules took it, from 1 (0: none)
 }
 
 // The size of the queue to the surface thread, in bytes. A message that
@@ -166,6 +167,13 @@ messages_dropped :: proc(h: ^Host) -> u64 {
 // Lock-free and allocation-free: call it from the app's MIDI thread, one
 // thread at a time, and not while `host_destroy` runs.
 route :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: u64, out: ^[3]u8) -> Route {
+	res := route_message(h, port, bytes, time_ns, out)
+	if intrinsics.atomic_load_explicit(&h.monitor.on, .Relaxed) do monitor_route(&h.monitor, port, bytes, time_ns, res)
+	return res
+}
+
+@(private)
+route_message :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: u64, out: ^[3]u8) -> Route {
 	r := &h.router
 	if len(bytes) == 0 do return {}
 	t: ^Table
@@ -241,7 +249,9 @@ route :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: u64, out
 		res.surface = enqueue(r, entry.uid, port, bytes, time_ns)
 	case .Rules:
 		rule: ^Compiled_Rule
-		for &c in t.rules[entry.first:][:entry.count] {
+		number := 0
+		for &c, i in t.rules[entry.first:][:entry.count] {
+			number = i + 1
 			if c.port != abi.NO_PORT && c.port != port do continue
 			if c.messages != {} && kind not_in c.messages do continue
 			if has_channel && c.channels != 0 && c.channels & (1 << channel) == 0 do continue
@@ -250,7 +260,7 @@ route :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: u64, out
 				if len(bytes) < c.sysex_size do continue
 				prefix := t.bytes[c.sysex_at:][:c.sysex_size]
 				same := true
-				for b, i in prefix do if bytes[i] != b { same = false; break }
+				for b, k in prefix do if bytes[k] != b { same = false; break }
 				if !same do continue
 			}
 			rule = &c
@@ -258,6 +268,7 @@ route :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: u64, out
 		}
 		if rule == nil do return {host = bytes}
 		res.action = rule.action
+		res.rule = number
 		to_surface := false
 		switch rule.action {
 		case .Pass: res.host = bytes

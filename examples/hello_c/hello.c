@@ -22,6 +22,11 @@
 
 #include "fsurf.h"
 
+/* Its hello's third byte (the tests build a second one with 2, to reload). */
+#ifndef HELLO_BYTE
+#define HELLO_BYTE 0x01
+#endif
+
 /* What a host offers as "org.fsurf.test" version 1 (the tests do). */
 typedef struct test_ext {
 	void (*ping)(const fsurf_host_t *host, const char *what);
@@ -100,7 +105,7 @@ static bool hello_activate(const fsurf_surface_t *s, const fsurf_port_t *p, uint
 	hello_t *h = self(s);
 	if (count != 1) return false;
 	h->out_port = p[0].output;
-	static const uint8_t hi[] = {0xF0, 0x7D, 0x01, 0xF7};
+	static const uint8_t hi[] = {0xF0, 0x7D, HELLO_BYTE, 0xF7};
 	send(h, hi, sizeof hi);
 	uint32_t n = 0;
 	if (h->host->settings_get(h->host, &n, sizeof n) != sizeof n) n = 0;

@@ -41,6 +41,8 @@ spec := kit.Spec{
 	description = "A pretend keyboard with transport, faders and knobs, for any fsurf.daw host",
 	ports       = {{role = "main", inputs = {"Keys 25*"}, outputs = {"Keys 25*"}}},
 	required_extensions = {abi.DAW_ID},
+	width       = 190, // millimetres, for tools
+	height      = 80,
 	setup       = setup,
 	on_destroy  = proc(cs: ^kit.Control_Surface) { kit.skin_destroy(cs.skin) },
 }
@@ -72,27 +74,43 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	kit.set_skin(cs, skin)
 
 	transport := kit.transport_make(cs)
-	Button :: struct { slot: string, cc: u8 }
-	buttons := []Button{{"loop", CC_LOOP}, {"stop", CC_STOP}, {"play", CC_PLAY}, {"record", CC_RECORD}, {"metronome", CC_METRONOME}}
-	for b in buttons do kit.layer_bind(transport.layer, b.slot, kit.button(cs, b.slot, kit.bind_cc(b.cc)))
+	Button :: struct { name, slot: string, cc: u8 }
+	buttons := []Button{{"Loop", "loop", CC_LOOP}, {"Stop", "stop", CC_STOP}, {"Play", "play", CC_PLAY}, {"Record", "record", CC_RECORD}, {"Metronome", "metronome", CC_METRONOME}}
+	for b, i in buttons {
+		c := kit.button(cs, b.name, kit.bind_cc(b.cc))
+		kit.place(c, 6 + f32(i % 3) * 14, 8 + f32(i / 3) * 12, 12, 8)
+		kit.layer_bind(transport.layer, b.slot, c)
+	}
 
 	mixer := kit.mixer_make(cs, "Mixer", 8)
 	device := kit.device_make(cs, "Device", 8)
 	for i in 0 ..< 8 {
-		kit.mixer_bind(mixer, i, .Volume, kit.fader(cs, "Fader", kit.bind_cc(u8(CC_FADER + i)), pickup = true))
-		kit.mixer_bind(mixer, i, .Mute, kit.button(cs, "Mute", kit.bind_cc(u8(CC_MUTE + i))))
-		kit.device_bind_param(device, i, kit.encoder(cs, "Knob", kit.bind_cc(u8(CC_KNOB + i)), .Binary_Offset))
+		x := 60 + f32(i) * 15
+		f := kit.fader(cs, "Fader", kit.bind_cc(u8(CC_FADER + i)), pickup = true)
+		kit.place(f, x + 2, 26, 8, 34)
+		m := kit.button(cs, "Mute", kit.bind_cc(u8(CC_MUTE + i)))
+		kit.place(m, x, 64, 12, 7)
+		k := kit.encoder(cs, "Knob", kit.bind_cc(u8(CC_KNOB + i)), .Binary_Offset)
+		kit.place(k, x + 1, 6, 10, 10)
+		kit.mixer_bind(mixer, i, .Volume, f)
+		kit.mixer_bind(mixer, i, .Mute, m)
+		kit.device_bind_param(device, i, k)
 	}
-	kit.layer_bind(device.layer, "prev_bank", kit.button(cs, "Device <", kit.bind_cc(CC_PARAMS_LEFT)))
-	kit.layer_bind(device.layer, "next_bank", kit.button(cs, "Device >", kit.bind_cc(CC_PARAMS_RIGHT)))
+	small :: proc(cs: ^kit.Control_Surface, name: string, cc: u8, x, y: f32) -> ^kit.Control {
+		c := kit.button(cs, name, kit.bind_cc(cc))
+		kit.place(c, x, y, 12, 7)
+		return c
+	}
+	kit.layer_bind(device.layer, "prev_bank", small(cs, "Device <", CC_PARAMS_LEFT, 6, 36))
+	kit.layer_bind(device.layer, "next_bank", small(cs, "Device >", CC_PARAMS_RIGHT, 20, 36))
 
 	nav := kit.navigation_make(cs)
-	kit.layer_bind(nav.layer, "left", kit.button(cs, "Bank <", kit.bind_cc(CC_BANK_LEFT)))
-	kit.layer_bind(nav.layer, "right", kit.button(cs, "Bank >", kit.bind_cc(CC_BANK_RIGHT)))
+	kit.layer_bind(nav.layer, "left", small(cs, "Bank <", CC_BANK_LEFT, 6, 48))
+	kit.layer_bind(nav.layer, "right", small(cs, "Bank >", CC_BANK_RIGHT, 20, 48))
 
 	app := kit.app_make(cs)
-	kit.layer_bind(app.layer, "undo", kit.button(cs, "Undo", kit.bind_cc(CC_UNDO)))
-	kit.layer_bind(app.layer, "redo", kit.button(cs, "Redo", kit.bind_cc(CC_REDO)))
+	kit.layer_bind(app.layer, "undo", small(cs, "Undo", CC_UNDO, 6, 60))
+	kit.layer_bind(app.layer, "redo", small(cs, "Redo", CC_REDO, 20, 60))
 
 	for c in ([]^kit.Component{transport, mixer, device, nav, app}) do kit.surface_add(cs, c)
 	return true

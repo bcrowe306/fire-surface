@@ -9,6 +9,9 @@ Skin_Value :: struct {
 	value:   u8,
 	channel: i8, // -1 = the control's own
 	sysex:   []u8,
+	// The colour it shows, for tools that draw the device (`skin_set_display`).
+	rgb:     u32,
+	has_rgb: bool,
 }
 
 // Names ("Transport.Play.On", "Session.Clip.Playing") to what a control is
@@ -38,6 +41,7 @@ skin_destroy :: proc(s: ^Skin) {
 skin_set :: proc(s: ^Skin, name: string, value: u8, channel: i8 = -1, sysex: []u8 = nil) {
 	v := Skin_Value{value = value, channel = channel, sysex = clone_bytes(sysex) if len(sysex) > 0 else nil}
 	if old, ok := s.values[name]; ok {
+		v.rgb, v.has_rgb = old.rgb, old.has_rgb
 		delete(old.sysex)
 		s.values[name] = v
 		return
@@ -58,4 +62,13 @@ set_skin :: proc(cs: ^Control_Surface, s: ^Skin) {
 	if cs.own_skin do skin_destroy(cs.skin)
 	cs.own_skin = false
 	cs.skin = s
+}
+
+// Says what colour a name shows on the device (0xRRGGBB), for tools that
+// draw it; set the value first (`skin_set`).
+skin_set_display :: proc(s: ^Skin, name: string, rgb: u32) {
+	if v, ok := &s.values[name]; ok {
+		v.rgb = rgb
+		v.has_rgb = true
+	}
 }

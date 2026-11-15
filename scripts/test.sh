@@ -14,4 +14,7 @@ for opt in none speed; do
 	done
 done
 for pkg in abi host surface testing; do odin check $pkg -no-entry-point -vet -strict-style; done
+# The fsurf tool: a scripted run whose expectations hold.
+EXE=""; case "$(uname -s)" in MINGW*|MSYS*) EXE=".exe" ;; esac
+.build/fsurf$EXE run .build/grid_odin.fsurf --daw tests/tools/grid.txt > .build/tool.log || { cat .build/tool.log; echo "the fsurf tool's script failed" >&2; exit 1; }
 echo "all tests passed"

@@ -41,7 +41,8 @@ CC_FADER :: 7 // and 39: 14 bits
 
 // The surface's own state.
 Grid :: struct {
-	keyboard: ^kit.Keyboard,
+	keyboard:    ^kit.Keyboard,
+	left, right: f32, // (setup: where the next button goes)
 }
 
 identity := kit.Identity_Def{
@@ -59,6 +60,8 @@ spec := kit.Spec{
 	description = "A pretend grid controller, made with the Odin kit",
 	ports       = {{role = "main", inputs = {"Grid*"}, outputs = {"Grid*"}}},
 	identity    = &identity,
+	width       = 150, // millimetres, for tools
+	height      = 118,
 	hello       = {{0xF0, 0x7D, 0x20, 0x01, 0xF7}},
 	goodbye     = {{0xF0, 0x7D, 0x20, 0x00, 0xF7}},
 	setup       = setup,
@@ -101,16 +104,42 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	cs.user = g
 	skin := kit.skin_make()
 	for v in SKIN do kit.skin_set(skin, v.name, v.value)
+	// What the pads look like, for tools that draw the device.
+	DISPLAY :: []struct { name: string, rgb: u32 }{
+		{"Drum.Pad", 0x203a5a}, {"Drum.Hit", 0x60b0ff}, {"Keyboard.Root", 0x30c060}, {"Keyboard.In_Scale", 0x2a5a3a},
+		{"Keyboard.Playing", 0x90ff90}, {"Session.Clip.Stopped", 0x806020}, {"Session.Clip.Playing", 0x40e040},
+		{"Session.Clip.Queued", 0xa0e040}, {"Session.Clip.Recording", 0xe03030}, {"Repeat.Pad", 0x503a70}, {"Repeat.Hit", 0xb080ff},
+	}
+	for d in DISPLAY do kit.skin_set_display(skin, d.name, d.rgb)
 	kit.set_skin(cs, skin)
 
 	// The hardware.
 	pads := kit.matrix_make(cs, "Pads", 4, 4, proc(row, col: int) -> kit.Binding {
 		return kit.bind_note(u8(36 + (3 - row) * 4 + col), PAD_CHANNEL) // 36 at the bottom left
 	})
-	button :: proc(cs: ^kit.Control_Surface, name: string, cc: u8) -> ^kit.Control { return kit.button(cs, name, kit.bind_cc(cc)) }
+	kit.place_matrix(pads, 34, 28, 18, 18, gap = 2)
+	// Buttons in two columns either side of the pads, from the top.
+	left, right: f32 = 28, 28
+	button :: proc(cs: ^kit.Control_Surface, name: string, cc: u8) -> ^kit.Control {
+		b := kit.button(cs, name, kit.bind_cc(cc))
+		g := (^Grid)(cs.user)
+		if cc == CC_OCTAVE_UP || cc == CC_OCTAVE_DOWN || cc >= CC_LEFT {
+			kit.place(b, 116, g.right, 28, 7)
+			g.right += 10
+		} else {
+			kit.place(b, 4, g.left, 26, 7)
+			g.left += 10
+		}
+		return b
+	}
+	g.left, g.right = left, right
 	knobs: [4]^kit.Control
-	for i in 0 ..< 4 do knobs[i] = kit.encoder(cs, "Knob", kit.bind_cc(u8(CC_KNOB + i)))
+	for i in 0 ..< 4 {
+		knobs[i] = kit.encoder(cs, "Knob", kit.bind_cc(u8(CC_KNOB + i)))
+		kit.place(knobs[i], 36 + f32(i) * 20, 6, 14, 14)
+	}
 	fader := kit.fader(cs, "Fader", kit.bind_cc14(CC_FADER), pickup = true)
+	kit.place(fader, 122, 6, 22, 14)
 
 	// The transport.
 	transport := kit.transport_make(cs)

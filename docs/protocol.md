@@ -68,6 +68,10 @@ create(host, id) → init → [identify] → activate(ports) ⇄ deactivate → 
 | `set_rules(rules, count)` | its claim table: where MIDI from its device goes |
 | `inject_midi(port, bytes, size)` | hands a message it claimed on to the host |
 
+A surface can offer extensions to the host too (`get_extension`): the kit
+offers `fsurf.layout`, its hardware described for tools
+([tools.md](tools.md)).
+
 A project's part comes through `project_save(stream)` and
 `project_load(stream)`.
 

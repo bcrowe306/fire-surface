@@ -40,6 +40,7 @@ Library :: struct {
 	entry:       ^abi.Entry,
 	factory:     ^abi.Surface_Factory,
 	instances:   int, // surfaces made from it and not destroyed
+	watch:       ^Watch, // `library_load_watched`'s, or nil
 }
 
 // Why a library didn't load.
@@ -120,6 +121,7 @@ library_unload :: proc(l: ^Library, allocator := context.allocator) -> bool {
 	if l.lib != nil do dynlib.unload_library(l.lib)
 	delete(l.descriptors, allocator)
 	delete(l.path, allocator)
+	if l.watch != nil do watch_free(l.watch, allocator)
 	free(l, allocator)
 	return true
 }
@@ -233,3 +235,6 @@ join :: proc(parts: []string, allocator := context.allocator) -> string {
 	p, _ := filepath.join(parts, allocator)
 	return p
 }
+
+@(private)
+unload_dynlib :: proc(lib: dynlib.Library) { dynlib.unload_library(lib) }

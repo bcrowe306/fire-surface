@@ -127,6 +127,14 @@ Control :: struct {
 	remap_channel: u8, // 1-16, 0 = its own
 	velocity_map:  ^[128]u8, // Remap: the host's velocities (nil = as played)
 
+	// Its place on the device (`place`), for tools.
+	x, y, w, h: f32,
+	// What it shows, for tools: its ring or motor's position, its colour.
+	position:     f32,
+	has_position: bool,
+	rgb:          u32,
+	has_rgb:      bool,
+
 	// Feedback sent, to send only changes.
 	last:     [3]u8,
 	last_len: int,
@@ -493,6 +501,8 @@ light_value :: proc(c: ^Control, value: u8, channel := -1) {
 set_position :: proc(c: ^Control, v: f32) {
 	b := out_binding(c)
 	x := clamp(v, 0, 1)
+	c.position = x
+	c.has_position = true
 	#partial switch b.kind {
 	case .Pitch_Bend:
 		send_feedback(c, pitch_bend(b.channel, u16(x * 16383 + 0.5)), 3)
@@ -521,6 +531,8 @@ send_feedback :: proc(c: ^Control, msg: [3]u8, n: int) {
 // Lights a control with a skin's value by name ("Transport.Play.On").
 light :: proc(c: ^Control, name: string) {
 	v := skin_value(c.cs, name)
+	c.has_rgb = v.has_rgb
+	c.rgb = v.rgb
 	if len(v.sysex) > 0 {
 		c.has_last = false
 		send(c.cs, v.sysex, out_binding(c).port)
@@ -533,6 +545,7 @@ light :: proc(c: ^Control, name: string) {
 light_off :: proc(c: ^Control) {
 	b := out_binding(c)
 	if b.kind == .None || b.kind == .Sysex || b.kind == .Program do return
+	c.has_rgb = false
 	light_value(c, 0)
 }
 

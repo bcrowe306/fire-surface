@@ -7,7 +7,7 @@ hosts the protocol. Ableton's MIDI Remote Scripts and FL Studio's MIDI
 scripting are the inspiration; CLAP is the model for how it is
 packaged, versioned and adopted.
 
-Status: stages 1 to 4 built (2026-11-15): see [protocol.md](protocol.md), [kit.md](kit.md) and [daw.md](daw.md). The rest is the plan.
+Status: stages 1 to 5 built (2026-11-15): see [protocol.md](protocol.md), [kit.md](kit.md), [daw.md](daw.md) and [tools.md](tools.md). The rest is the plan.
 
 ## Goals
 
@@ -397,8 +397,13 @@ Pads), documented, and pushed.
    extension) and the grid with session, drum and keyboard modes
    (`grid_odin`). Pads offering it from the Pads API moved to stage 7,
    with the rest of Pads' side.
-5. **Tools**: hot reload, the MIDI monitor, the virtual controller
-   (`fsurf.layout`).
+5. **Tools** (built): hot reload (`library_load_watched`), the MIDI
+   monitor (lock-free from `route`, each message named by the surface),
+   the virtual controller (`fsurf_layout.h`, offered by the kit for every
+   surface: controls placed, played with the mouse, drawn as SVG), the
+   test host by control name, and the `fsurf` command-line tool (scan,
+   info, scripted runs). Their panels in a host's UI come with Pads
+   (stage 7).
 6. **Displays**: the draw kit, USB bulk and HID through the host, frame
    pacing, mirrored in the virtual controller; an example display
    surface.

@@ -70,6 +70,9 @@ Spec :: struct {
 	// The skin the controls' named values come from (nil = an empty one:
 	// "*.On" is 127, "*.Off" 0).
 	skin:                ^Skin,
+	// The device's size, in the units its controls are placed in (`place`):
+	// for tools (fsurf.layout).
+	width, height:       f32,
 	// What isn't owned: by default the surface takes the messages of its
 	// controls even when no component owns them (a button doesn't play a
 	// note); with this, they go to the host.
@@ -131,6 +134,10 @@ Control_Surface :: struct {
 	daw_subscribed: abi.Daw_Topics,
 	daw_subscribe_sent: bool,
 	ring:       Ring,
+	// fsurf.layout (layout.odin).
+	layout:       abi.Layout,
+	layout_name:  [96]u8,
+	layout_owner: [96]u8,
 }
 
 // A library of kit surfaces: what a .fsurf's entry points at.
@@ -291,8 +298,9 @@ factory_create :: proc "c" (f: ^abi.Surface_Factory, host: ^abi.Host, id: cstrin
 			init = c_init, destroy = c_destroy, identify = c_identify,
 			activate = c_activate, deactivate = c_deactivate,
 			on_midi = c_on_midi, on_timer = c_on_timer, on_idle = c_on_idle,
-			project_save = c_save, project_load = c_load,
+			project_save = c_save, project_load = c_load, get_extension = c_get_extension,
 		}
+		layout_init(cs)
 		return &cs.surface
 	}
 	return nil

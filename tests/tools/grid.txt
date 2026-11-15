@@ -1,0 +1,15 @@
+# The fsurf tool's own test (scripts/test.sh): the grid example, on a fake DAW.
+click Play
+expect B0 55 7F
+press Pads 3,0 90
+expect 99 24 7F
+release Pads 3,0
+expect 99 24 0A
+click Keys
+expect B0 5B 7F
+in 99 24 64
+expect 99 24 7F
+turn Knob 2
+move Fader 0.8
+svg .build/tool.svg
+daw

@@ -31,6 +31,9 @@ Host_Config :: struct {
 	// Detection: the settings blob kept for a device, given to its surface
 	// when it is made (copied). nil, or empty: none.
 	device_settings: proc(user: rawptr, d: ^Device) -> []u8,
+	// Hot reload: a watched library was reloaded (ok), or its new build
+	// didn't load (the old one goes on).
+	on_reload:     proc(user: rawptr, l: ^Library, ok: bool),
 }
 
 // Runs surfaces. Surface thread only. Fields are internal.
@@ -52,6 +55,7 @@ Host :: struct {
 	inputs:     [dynamic]Port_Info,
 	outputs:    [dynamic]Port_Info,
 	disabled:   [dynamic]string, // surface ids not detected
+	monitor:    Monitor,
 }
 
 @(private)
@@ -110,6 +114,7 @@ host_init :: proc(h: ^Host, config: Host_Config, allocator := context.allocator)
 	h.outputs = make([dynamic]Port_Info, allocator)
 	h.disabled = make([dynamic]string, allocator)
 	router_init(&h.router, allocator)
+	monitor_init(&h.monitor, allocator)
 	for s, i in ([4]string{config.name, config.vendor, config.url, config.version}) do h.strings[i] = strings.clone_to_cstring(s, allocator)
 }
 
@@ -120,6 +125,7 @@ host_destroy :: proc(h: ^Host) {
 	devices_destroy(h)
 	for len(h.instances) > 0 do instance_destroy(h.instances[len(h.instances) - 1])
 	router_destroy(&h.router, h.allocator)
+	monitor_destroy(&h.monitor, h.allocator)
 	delete(h.instances)
 	delete(h.timers)
 	for s in h.strings do delete(s, h.allocator)
@@ -136,6 +142,8 @@ host_now_ns :: proc(h: ^Host) -> u64 {
 // surface's on_idle.
 host_update :: proc(h: ^Host) {
 	h.updating = true
+	reload_check(h)
+	monitor_drain(h)
 	router_drain(h, deliver)
 	now := host_now_ns(h)
 	// (A timer may start or stop timers: those made now wait for the next update.)
@@ -407,6 +415,7 @@ c_send_midi :: proc "c" (h: ^abi.Host, port: u32, bytes: [^]u8, size: u32) -> bo
 	mine := false
 	for p in s.ports do if p.output == port do mine = true
 	if !mine do return false
+	monitor_sent(s.host, s, .Out, port, bytes[:size])
 	return s.host.config.send_midi(s.host.config.user, s, port, bytes[:size])
 }
 
@@ -488,6 +497,7 @@ c_inject_midi :: proc "c" (h: ^abi.Host, port: u32, bytes: [^]u8, size: u32) -> 
 	mine := false
 	for p in s.ports do if p.input == port do mine = true
 	if !mine do return false
+	monitor_sent(s.host, s, .Inject, port, bytes[:size])
 	return s.host.config.inject_midi(s.host.config.user, s, port, bytes[:size])
 }
 
@@ -502,4 +512,60 @@ deliver :: proc(h: ^Host, uid, port: u32, bytes: []u8, time_ns: u64) {
 		instance_midi(s, port, bytes, time_ns)
 		return
 	}
+}
+
+// Hot reload: the surface destroyed, the Instance kept (its settings, its
+// place in the host, its device). Deactivated first if it was active.
+@(private)
+instance_detach :: proc(s: ^Instance) {
+	h := s.host
+	if s.state == .Active do s.surface.deactivate(s.surface)
+	s.state = .Ready
+	for &t in h.timers do if t.instance == s do t.stopped = true
+	if !h.updating {
+		for i := len(h.timers) - 1; i >= 0; i -= 1 do if h.timers[i].stopped do ordered_remove(&h.timers, i)
+	}
+	s.surface.destroy(s.surface)
+	s.surface = nil
+	free_ports(s)
+	clear(&s.rules)
+	clear(&s.rule_bytes)
+	s.identified = nil
+	h.routes_dirty = true
+	publish_routes(h)
+}
+
+// Hot reload: a new surface for a detached Instance, from its library (now
+// the new code), and its init. False if it couldn't be made.
+@(private)
+instance_attach :: proc(s: ^Instance, surface_id: string) -> bool {
+	l := s.library
+	d := library_find(l, surface_id)
+	if d == nil do return false
+	id := strings.clone_to_cstring(surface_id, context.temp_allocator)
+	surf := l.factory.create(l.factory, &s.c_host, id)
+	if surf == nil || surf.struct_size < size_of(abi.Surface) || surf.init == nil || surf.destroy == nil || surf.activate == nil || surf.deactivate == nil {
+		return false
+	}
+	s.descriptor = d
+	s.surface = surf
+	if !surf.init(surf) {
+		surf.destroy(surf)
+		s.surface = nil
+		return false
+	}
+	return true
+}
+
+// Hot reload: a detached Instance that couldn't be made again goes.
+@(private)
+instance_destroy_detached :: proc(s: ^Instance) {
+	h := s.host
+	s.library.instances -= 1
+	for x, i in h.instances do if x == s { ordered_remove(&h.instances, i); break }
+	if d := s.device; d != nil {
+		d.instance = nil
+		set_state(h, d, .Failed)
+	}
+	instance_free(s)
 }
