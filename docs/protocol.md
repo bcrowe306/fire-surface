@@ -171,7 +171,8 @@ host->set_rules(host, rules, 2);   /* pads and its own SysEx: the surface's; key
   `find_matches`, `identity_matches`
 - `route(host, port, bytes, time, &out)` on the app's MIDI thread: the
   claim table applied, lock-free and without allocating; what the app's
-  own MIDI handling gets, and whether a surface got it
+  own MIDI handling gets, and whether a surface got it; `route_here` on
+  the surface thread, for MIDI a host reads there (SysEx, as a rule)
 - surfaces by hand: `instance_create`, `instance_activate`,
   `instance_deactivate`, `instance_midi`, `instance_identify`, settings
   and project state, `instance_destroy`

@@ -881,3 +881,36 @@ a_surface_requiring_the_daw_extension_waits_for_a_host_with_it :: proc(t: ^testi
 	testing.expect(t, host.library_unload(lib))
 	fake_destroy(&f)
 }
+
+// SysEx routed on the surface thread (`route_here`), as a host that
+// assembles it there does: identity replies, a surface's own SysEx, the
+// monitor.
+@(test)
+sysex_routed_on_the_surface_thread_reaches_detection_and_surfaces :: proc(t: ^testing.T) {
+	lib, err := host.library_load(example_path("hello_c.fsurf"))
+	if !testing.expect_value(t, err, host.Library_Error.None) do return
+	f: Fake
+	h: host.Host
+	host.host_init(&h, fake_config(&f))
+	host.host_add_library(&h, lib)
+	host.monitor_enable(&h, true)
+	host.host_set_ports(&h, {{1, "Hello"}}, {{2, "Hello"}})
+	out: [3]u8
+	r := host.route_here(&h, 1, {0xF0, 0x7E, 0x00, 0x06, 0x02, 0x7D, 0xF7}, 0, &out) // its identity reply
+	testing.expect(t, r.surface && r.host != nil) // (detection looks; the app gets it too)
+	host.host_update(&h)
+	d := host.host_devices(&h)[0]
+	testing.expect_value(t, d.state, host.Device_State.Active)
+	r = host.route_here(&h, 1, {0xF0, 0x7D, 0x09, 0xF7}, 0, &out) // its own SysEx: claimed
+	testing.expect(t, r.surface && r.host == nil)
+	n := len(f.notified)
+	host.host_update(&h)
+	testing.expect_value(t, len(f.notified), n + 1) // it noticed
+	found := false
+	for e in host.monitor_entries(&h) do if e.kind == .In && e.bytes[2] == 0x09 do found = e.action == .Claim
+	testing.expect(t, found)
+	clear_sent(&f)
+	host.host_destroy(&h)
+	testing.expect(t, host.library_unload(lib))
+	fake_destroy(&f)
+}

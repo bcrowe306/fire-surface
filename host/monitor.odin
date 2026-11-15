@@ -131,6 +131,22 @@ monitor_route :: proc "contextless" (m: ^Monitor, port: u32, bytes: []u8, time_n
 	intrinsics.atomic_store_explicit(&m.head, head + 1, .Release)
 }
 
+// Surface thread: what `route_here` did, straight into the list.
+@(private)
+monitor_route_here :: proc(h: ^Host, port: u32, bytes: []u8, time_ns: u64, r: Route) {
+	e := Monitor_Entry{kind = .In, time_ns = time_ns, port = port, size = len(bytes), action = r.action, to_host = r.host != nil, to_surface = r.surface, rule = r.rule}
+	for i in 0 ..< min(len(bytes), MONITOR_BYTES) do e.bytes[i] = bytes[i]
+	for s in h.instances {
+		if s.state != .Active && s.state != .Identifying do continue
+		for p in s.ports do if p.input == port {
+			describe(h, &e, s)
+			break
+		}
+		if e.uid != 0 do break
+	}
+	monitor_add(h, e)
+}
+
 // Surface thread: route's entries into the list, described.
 @(private)
 monitor_drain :: proc(h: ^Host) {

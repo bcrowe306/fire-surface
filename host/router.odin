@@ -1,6 +1,7 @@
 package fsurf_host
 
 import "base:intrinsics"
+import "base:runtime"
 import "core:mem"
 
 import abi "../abi"
@@ -48,6 +49,7 @@ Router :: struct {
 	dropped:   u64, // atomic
 	notes:     []Port_Notes, // `route`'s alone
 	scratch:   [dynamic]u8, // the surface thread's, for reading the queue
+	held:      [dynamic]Held, // `route_here`'s, for the next update
 }
 
 @(private)
@@ -114,6 +116,7 @@ router_init :: proc(r: ^Router, allocator: mem.Allocator) {
 	r.queue = make([]u8, QUEUE_BYTES, allocator)
 	r.notes = make([]Port_Notes, NOTE_PORTS, allocator)
 	r.scratch = make([dynamic]u8, allocator)
+	r.held = make([dynamic]Held, allocator)
 }
 
 @(private)
@@ -124,6 +127,8 @@ router_destroy :: proc(r: ^Router, allocator: mem.Allocator) {
 	delete(r.queue, allocator)
 	delete(r.notes, allocator)
 	delete(r.scratch)
+	for m in r.held do delete(m.bytes, r.held.allocator)
+	delete(r.held)
 }
 
 @(private)
@@ -167,13 +172,6 @@ messages_dropped :: proc(h: ^Host) -> u64 {
 // Lock-free and allocation-free: call it from the app's MIDI thread, one
 // thread at a time, and not while `host_destroy` runs.
 route :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: u64, out: ^[3]u8) -> Route {
-	res := route_message(h, port, bytes, time_ns, out)
-	if intrinsics.atomic_load_explicit(&h.monitor.on, .Relaxed) do monitor_route(&h.monitor, port, bytes, time_ns, res)
-	return res
-}
-
-@(private)
-route_message :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: u64, out: ^[3]u8) -> Route {
 	r := &h.router
 	if len(bytes) == 0 do return {}
 	t: ^Table
@@ -182,7 +180,27 @@ route_message :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: 
 		intrinsics.atomic_store(&r.hazard, t)
 		if intrinsics.atomic_load(&r.published) == t do break
 	}
-	defer intrinsics.atomic_store(&r.hazard, nil)
+	res := route_message(h, t, false, port, bytes, time_ns, out)
+	intrinsics.atomic_store(&r.hazard, nil)
+	if intrinsics.atomic_load_explicit(&h.monitor.on, .Relaxed) do monitor_route(&h.monitor, port, bytes, time_ns, res)
+	return res
+}
+
+// As `route`, on the surface thread: for a host that reads some MIDI there
+// (SysEx, as a rule, assembled on that thread) while its MIDI thread routes
+// the rest with `route`. A surface's copy is held for the next
+// `host_update`, as `route`'s are. A note off here doesn't follow its note
+// on (only `route` keeps notes): route notes with `route`.
+route_here :: proc(h: ^Host, port: u32, bytes: []u8, time_ns: u64, out: ^[3]u8) -> Route {
+	if len(bytes) == 0 do return {}
+	res := route_message(h, h.router.published, true, port, bytes, time_ns, out) // (this thread publishes it)
+	if intrinsics.atomic_load_explicit(&h.monitor.on, .Relaxed) do monitor_route_here(h, port, bytes, time_ns, res)
+	return res
+}
+
+@(private)
+route_message :: proc "contextless" (h: ^Host, t: ^Table, here: bool, port: u32, bytes: []u8, time_ns: u64, out: ^[3]u8) -> Route {
+	r := &h.router
 
 	status := bytes[0]
 	if status < 0x80 do return {host = bytes} // not a message: the app's to judge
@@ -207,7 +225,7 @@ route_message :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: 
 	for &p in t.ports do if p.port == port { entry = &p; break }
 
 	// A note off, or a note's pressure, goes where its note on went.
-	if kind == .Note_Off || kind == .Poly_Pressure {
+	if !here && (kind == .Note_Off || kind == .Poly_Pressure) {
 		if pn := port_notes(r, port, false); pn != nil {
 			rec := &pn.notes[channel][data1]
 			if rec.to & NOTE_SEEN != 0 {
@@ -223,7 +241,7 @@ route_message :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: 
 					}
 				}
 				surface := rec.to & NOTE_SURFACE != 0
-				if surface && entry != nil do res.surface = enqueue(r, entry.uid, port, bytes, time_ns)
+				if surface && entry != nil do res.surface = give(r, here, entry.uid, port, bytes, time_ns)
 				switch {
 				case res.host == nil && !surface: res.action = .Drop
 				case res.host == nil:             res.action = .Claim
@@ -243,10 +261,10 @@ route_message :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: 
 	switch entry.mode {
 	case .Probe:
 		res = {host = bytes}
-		if kind == .Sysex do res.surface = enqueue(r, 0, port, bytes, time_ns)
+		if kind == .Sysex do res.surface = give(r, here, 0, port, bytes, time_ns)
 	case .Everything:
 		res = {host = bytes, action = .Observe}
-		res.surface = enqueue(r, entry.uid, port, bytes, time_ns)
+		res.surface = give(r, here, entry.uid, port, bytes, time_ns)
 	case .Rules:
 		rule: ^Compiled_Rule
 		number := 0
@@ -279,10 +297,10 @@ route_message :: proc "contextless" (h: ^Host, port: u32, bytes: []u8, time_ns: 
 			res.host = remap(t, rule, status, kind, bytes, out)
 			to_surface = rule.copy
 		}
-		if to_surface do res.surface = enqueue(r, entry.uid, port, bytes, time_ns)
+		if to_surface do res.surface = give(r, here, entry.uid, port, bytes, time_ns)
 	}
 
-	if kind == .Note_On {
+	if kind == .Note_On && !here {
 		if pn := port_notes(r, port, true); pn != nil {
 			rec := Note_Route{to = NOTE_SEEN, note = data1, channel = channel}
 			if res.host != nil {
@@ -337,6 +355,26 @@ port_notes :: proc "contextless" (r: ^Router, port: u32, take: bool) -> ^Port_No
 	free_slot.used = true
 	free_slot.port = port
 	return free_slot
+}
+
+// To the surface thread: `route`'s through the queue, `route_here`'s held
+// on that thread for the next update.
+@(private)
+give :: proc "contextless" (r: ^Router, here: bool, uid, port: u32, bytes: []u8, time_ns: u64) -> bool {
+	if !here do return enqueue(r, uid, port, bytes, time_ns)
+	context = runtime.default_context()
+	m := Held{uid = uid, port = port, time_ns = time_ns}
+	m.bytes = make([]u8, len(bytes), r.held.allocator)
+	copy(m.bytes, bytes)
+	append(&r.held, m)
+	return true
+}
+
+@(private)
+Held :: struct {
+	uid, port: u32,
+	time_ns:   u64,
+	bytes:     []u8,
 }
 
 // [rt] Queues a message for the surface thread. False when it doesn't fit.
@@ -399,6 +437,13 @@ router_drain :: proc(h: ^Host, deliver: proc(h: ^Host, uid, port: u32, bytes: []
 		intrinsics.atomic_store_explicit(&r.tail, tail, .Release)
 		deliver(h, uid, port, r.scratch[:], time_ns)
 	}
+	// Then what `route_here` held (a delivery may route more here: by index).
+	for i := 0; i < len(r.held); i += 1 {
+		m := r.held[i]
+		deliver(h, m.uid, m.port, m.bytes, m.time_ns)
+	}
+	for m in r.held do delete(m.bytes, r.held.allocator)
+	clear(&r.held)
 }
 
 // Surface thread: a table from what the surfaces and detection have now,
