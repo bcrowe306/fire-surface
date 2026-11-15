@@ -9,7 +9,9 @@ cd "$ROOT"
 command -v python3 > /dev/null && python3 scripts/gen_layout.py
 git diff --quiet -- tests/layout/layout.c 2>/dev/null || { echo "tests/layout/layout.c was out of date (regenerated): commit it" >&2; }
 for opt in none speed; do
-	odin test tests/host -vet -strict-style -o:$opt -define:ODIN_TEST_FANCY=false
+	for pkg in host kit; do
+		odin test tests/$pkg -vet -strict-style -o:$opt -define:ODIN_TEST_FANCY=false
+	done
 done
-for pkg in abi host; do odin check $pkg -no-entry-point -vet -strict-style; done
+for pkg in abi host surface testing; do odin check $pkg -no-entry-point -vet -strict-style; done
 echo "all tests passed"

@@ -828,3 +828,34 @@ the_examples_are_found_identified_and_claim_their_pads :: proc(t: ^testing.T) {
 		fake_destroy(&f)
 	}
 }
+
+// The kit example as a loaded library (its own runtime, apart from the
+// host's): found, identified, its hello, its pads remapped.
+@(test)
+a_kit_surface_loads_from_its_library :: proc(t: ^testing.T) {
+	lib, err := host.library_load(example_path("grid_odin.fsurf"))
+	if !testing.expectf(t, err == .None, "grid_odin.fsurf: %v (./scripts/build.sh)", err) do return
+	f: Fake
+	h: host.Host
+	host.host_init(&h, fake_config(&f))
+	host.host_add_library(&h, lib)
+	host.host_set_ports(&h, {{1, "Grid MIDI"}}, {{2, "Grid MIDI"}})
+	expect_sent(t, &f, {0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7})
+	out: [3]u8
+	host.route(&h, 1, {0xF0, 0x7E, 0x00, 0x06, 0x02, 0x7D, 0x20, 0x01, 0xF7}, 0, &out)
+	host.host_update(&h)
+	d := host.host_devices(&h)[0]
+	testing.expect_value(t, d.state, host.Device_State.Active)
+	testing.expect(t, len(f.sent) > 16) // its hello and lights
+	if len(f.sent) > 0 do expect_bytes(t, f.sent[0], {0xF0, 0x7D, 0x20, 0x01, 0xF7})
+	clear_sent(&f)
+	r := host.route(&h, 1, {0x99, 37, 100}, 0, &out) // a pad: drum 37, and a copy to light it
+	testing.expect_value(t, r.action, abi.Rule_Action.Remap)
+	testing.expect(t, r.surface)
+	host.host_update(&h)
+	if testing.expect_value(t, len(f.sent), 1) do expect_bytes(t, f.sent[0], {0x99, 37, 127})
+	clear_sent(&f)
+	host.host_destroy(&h)
+	testing.expect(t, host.library_unload(lib))
+	fake_destroy(&f)
+}

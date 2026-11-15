@@ -7,7 +7,7 @@ hosts the protocol. Ableton's MIDI Remote Scripts and FL Studio's MIDI
 scripting are the inspiration; CLAP is the model for how it is
 packaged, versioned and adopted.
 
-Status: stages 1 and 2 built (2026-11-15): see [protocol.md](protocol.md). The rest is the plan.
+Status: stages 1 to 3 built (2026-11-15): see [protocol.md](protocol.md) and [kit.md](kit.md). The rest is the plan.
 
 ## Goals
 
@@ -380,10 +380,14 @@ Pads), documented, and pushed.
    the host library's `route`, lock-free, notes following their note on;
    surfaces linked in (`library_static`). Wiring `route` into Pads' MIDI
    path moved to stage 7, with the rest of Pads' side.
-3. **The kit's core**: Control_Surface and the spec, controls, layers
-   and owner stacks, components, modes and behaviours, skins, tasks, the
-   claim table worked out from owners; the MIDI, music and colour
-   helpers; the test host.
+3. **The kit's core** (built): Control_Surface and the spec, controls,
+   layers and owner stacks, components, modes and behaviours, skins,
+   tasks, the claim table worked out from owners; the MIDI, music and
+   colour helpers; the test host (`testing`); the built-ins that need no
+   host extension (Modes, Modifier, Drum_Pads, Keyboard) and an example
+   (`grid_odin`). Device palettes wait for the devices that need them
+   (see the questions below); Note_Repeat comes with `fsurf.daw`'s
+   transport.
 4. **`fsurf.daw`**: the extension's header and the kit's wrappers; Pads
    offers it from the Pads API; built-in components on it; examples: a
    keyboard with transport and faders (any host), a grid controller with

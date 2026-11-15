@@ -411,6 +411,7 @@ UNIVERSAL_IDENTITY_REQUEST :: [6]u8{0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7}
 // An identity request's retries and the wait between, when a descriptor
 // leaves them 0.
 DEFAULT_RETRIES :: 2
+// (See DEFAULT_RETRIES.)
 DEFAULT_RETRY_MS :: 300
 
 // A SysEx from a port the host is identifying a device on.
