@@ -58,7 +58,7 @@ extern "C" {
 /* ── Versions ─────────────────────────────────────────────────────────── */
 
 #define FSURF_VERSION_MAJOR 0
-#define FSURF_VERSION_MINOR 2
+#define FSURF_VERSION_MINOR 3
 #define FSURF_VERSION_REVISION 0
 
 typedef struct fsurf_version {
@@ -138,6 +138,53 @@ enum {
 	                               host->identified() */
 };
 
+/* A device other than MIDI that a surface uses (a display over USB or
+   HID), found by its ids. The host opens it when the surface is
+   activated, and writes to it for the surface. */
+typedef struct fsurf_device_spec {
+	uint32_t struct_size;
+	const char *role;        /* "display" */
+	uint32_t transport;      /* FSURF_DEVICE_* */
+	uint16_t vendor_id;
+	uint16_t product_id;
+	int32_t interface;       /* USB: the interface (-1 = any) */
+	uint8_t endpoint_out;    /* USB bulk: the OUT endpoint's address (0x01) */
+	uint8_t endpoint_in;     /* USB bulk: the IN endpoint's (0 = none) */
+	uint16_t usage_page;     /* HID: 0 = any */
+	uint16_t usage;          /* HID: 0 = any */
+	uint16_t _reserved;
+	uint32_t flags;          /* FSURF_DEVICE_OPTIONAL */
+} fsurf_device_spec_t;
+
+enum {
+	FSURF_DEVICE_USB_BULK = 0,
+	FSURF_DEVICE_HID = 1,
+};
+
+enum {
+	FSURF_DEVICE_OPTIONAL = 1 << 0, /* the surface runs without it */
+};
+
+/* A display on the device: what it is, and how often it wants a frame. */
+typedef struct fsurf_display_spec {
+	uint32_t struct_size;
+	const char *name;
+	uint32_t width;          /* pixels; a text display's: characters */
+	uint32_t height;         /* pixels; a text display's: lines */
+	uint32_t format;         /* FSURF_PIXEL_* */
+	uint32_t fps;            /* frames a second the host asks for (on_display_frame) */
+	int32_t device;          /* the device spec it goes over, or -1 (MIDI SysEx: the surface sends it) */
+} fsurf_display_spec_t;
+
+enum {
+	FSURF_PIXEL_RGB565 = 0,   /* 16 bits, little-endian */
+	FSURF_PIXEL_BGR565 = 1,   /* 16 bits, little-endian, blue high (Push 2) */
+	FSURF_PIXEL_RGB888 = 2,
+	FSURF_PIXEL_MONO = 3,     /* 1 bit, rows, most significant bit first */
+	FSURF_PIXEL_MONO_PAGES = 4, /* 1 bit, in pages of 8 rows (SSD1306 OLEDs) */
+	FSURF_PIXEL_TEXT = 5,     /* characters (a character LCD) */
+};
+
 /* One kind of surface (a controller model). */
 typedef struct fsurf_descriptor {
 	uint32_t struct_size;
@@ -154,6 +201,11 @@ typedef struct fsurf_descriptor {
 	/* Host extensions it can't work without ("fsurf.daw"), null-terminated
 	   or NULL; a host lacking one doesn't offer the surface. */
 	const char *const *required_extensions;
+	/* Version 0.3: devices other than MIDI, and displays. */
+	const fsurf_device_spec_t *devices;
+	uint32_t device_count;
+	const fsurf_display_spec_t *displays;
+	uint32_t display_count;
 } fsurf_descriptor_t;
 
 /* ── The claim table: where MIDI from the device goes ─────────────────── */
@@ -285,6 +337,17 @@ typedef struct fsurf_host {
 	   code, and hands it on (later than a rule would, by the surface
 	   thread's latency). False when the port isn't the surface's. */
 	bool (*inject_midi)(const struct fsurf_host *host, uint32_t port, const uint8_t *bytes, uint32_t size);
+
+	/* Version 0.3. Writes to one of its devices (by its index in the
+	   descriptor's devices): a USB bulk transfer, or an HID report. False
+	   when it isn't open (on_device says when it is) or the host's queue is
+	   full. The host may pace large writes. */
+	bool (*device_write)(const struct fsurf_host *host, uint32_t device, const uint8_t *bytes, uint32_t size);
+	/* Gives the host what a display shows now, to mirror it on screen (a
+	   virtual controller): `width` x `height` pixels, RGBA, 8 bits a channel,
+	   rows top to bottom. The host copies them. A surface calls it when it
+	   draws a frame (or as often as it likes). */
+	void (*display_mirror)(const struct fsurf_host *host, uint32_t display, const uint8_t *rgba, uint32_t width, uint32_t height);
 } fsurf_host_t;
 
 /* ── A surface ────────────────────────────────────────────────────────── */
@@ -339,6 +402,16 @@ typedef struct fsurf_surface {
 
 	/* An extension of the surface by id, for the host, or NULL. May be NULL. */
 	const void *(*get_extension)(const struct fsurf_surface *surface, const char *id);
+
+	/* Version 0.3; each may be NULL. A device opened or closed (it comes
+	   and goes apart from the MIDI ports: send everything again when it
+	   opens). */
+	void (*on_device)(const struct fsurf_surface *surface, uint32_t device, bool open);
+	/* What a device sent (a USB IN transfer, an HID report). */
+	void (*on_device_read)(const struct fsurf_surface *surface, uint32_t device, const uint8_t *bytes, uint32_t size);
+	/* Time for a display's frame (at its spec's fps, while active): draw
+	   what changed and send it. */
+	void (*on_display_frame)(const struct fsurf_surface *surface, uint32_t display);
 } fsurf_surface_t;
 
 /* ── The factory ──────────────────────────────────────────────────────── */

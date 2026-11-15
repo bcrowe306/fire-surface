@@ -18,6 +18,7 @@ package fsurf_testing
 import "core:strings"
 
 import abi "../abi"
+import "../draw"
 import host "../host"
 import kit "../surface"
 
@@ -43,6 +44,16 @@ Test_Host :: struct {
 	daw:        ^Fake_Daw, // `daw_enable`'s, or nil
 	virtual:    host.Virtual, // `virtual`'s, opened when first asked
 	has_virtual: bool,
+	// Its fake devices: all open unless `devices_fail` (set before start).
+	devices_fail: bool,
+	devices_open: [dynamic]bool,
+	writes:     [dynamic]Device_Write, // what was written to them (cleared by `clear_writes`)
+}
+
+// A write to one of the surface's devices.
+Device_Write :: struct {
+	device: int,
+	bytes:  []u8,
 }
 
 // An extension the test host offers.
@@ -87,6 +98,8 @@ start_file :: proc(th: ^Test_Host, path: string, surface_id: string, ports: []ho
 @(private)
 setup :: proc(th: ^Test_Host) {
 	th.sent = make([dynamic]Sent)
+	th.writes = make([dynamic]Device_Write)
+	th.devices_open = make([dynamic]bool)
 	th.injected = make([dynamic][]u8)
 	th.notified = make([dynamic]string)
 	th.logged = make([dynamic]string)
@@ -121,6 +134,9 @@ stop :: proc(th: ^Test_Host) {
 	host.host_destroy(&th.h)
 	if th.lib != nil do host.library_unload(th.lib)
 	clear_sent(th)
+	clear_writes(th)
+	delete(th.writes)
+	delete(th.devices_open)
 	for b in th.injected do delete(b)
 	for s in th.notified do delete(s)
 	for s in th.logged do delete(s)
@@ -244,6 +260,23 @@ config :: proc(th: ^Test_Host) -> host.Host_Config {
 			append(&(^Test_Host)(user).notified, strings.clone(text))
 		},
 		now_ns = proc(user: rawptr) -> u64 { return (^Test_Host)(user).now },
+		device_open = proc(user: rawptr, s: ^host.Instance, device: u32, spec: ^abi.Device_Spec) -> bool {
+			th := (^Test_Host)(user)
+			for len(th.devices_open) <= int(device) do append(&th.devices_open, false)
+			th.devices_open[device] = !th.devices_fail
+			return !th.devices_fail
+		},
+		device_write = proc(user: rawptr, s: ^host.Instance, device: u32, bytes: []u8) -> bool {
+			th := (^Test_Host)(user)
+			c := make([]u8, len(bytes))
+			copy(c, bytes)
+			append(&th.writes, Device_Write{int(device), c})
+			return true
+		},
+		device_close = proc(user: rawptr, s: ^host.Instance, device: u32) {
+			th := (^Test_Host)(user)
+			if int(device) < len(th.devices_open) do th.devices_open[device] = false
+		},
 	}
 }
 
@@ -332,4 +365,45 @@ shows :: proc(th: ^Test_Host, name: string) -> (abi.Layout_State, bool) {
 svg :: proc(th: ^Test_Host) -> string {
 	v := virtual(th)
 	return host.virtual_svg(v) if v != nil else ""
+}
+
+// Forgets what was written to the devices.
+clear_writes :: proc(th: ^Test_Host) {
+	for w in th.writes do delete(w.bytes)
+	clear(&th.writes)
+}
+
+// The bytes written to a device (since `clear_writes`), joined, in the
+// temp allocator; and how many writes.
+written :: proc(th: ^Test_Host, device: int) -> ([]u8, int) {
+	out := make([dynamic]u8, context.temp_allocator)
+	n := 0
+	for w in th.writes do if w.device == device {
+		append(&out, ..w.bytes)
+		n += 1
+	}
+	return out[:], n
+}
+
+// A device unplugged, or plugged back in (the MIDI ports still there).
+device_state :: proc(th: ^Test_Host, device: int, open: bool) {
+	if device < len(th.devices_open) do th.devices_open[device] = open
+	host.instance_device_state(th.s, device, open)
+	update(th)
+}
+
+// What a device sends (a USB IN transfer, an HID report).
+device_read :: proc(th: ^Test_Host, device: int, bytes: []u8) {
+	host.instance_device_read(th.s, device, bytes)
+	update(th)
+}
+
+// What a display shows (as the surface mirrored it), as a PNG file in the
+// temp allocator; nil before its first frame.
+display_png :: proc(th: ^Test_Host, display: int) -> []u8 {
+	m := host.instance_display(th.s, display)
+	if m == nil do return nil
+	out := make([dynamic]u8, context.temp_allocator)
+	draw.png_rgba(m.rgba[:], m.width, m.height, &out)
+	return out[:]
 }

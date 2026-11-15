@@ -110,6 +110,14 @@ info :: proc(args: []string) -> int {
 			fmt.println("  identified by its port names")
 		}
 		if d.required_extensions != nil do fmt.printfln("  requires %v", names(d.required_extensions))
+		for i in 0 ..< int(d.device_count) {
+			v := d.devices[i]
+			fmt.printfln("  device %q: %v %04X:%04X%s", v.role, v.transport, v.vendor_id, v.product_id, " (optional)" if .Optional in v.flags else "")
+		}
+		for i in 0 ..< int(d.display_count) {
+			v := d.displays[i]
+			fmt.printfln("  display %q: %d x %d %v, %d fps, %s", v.name, v.width, v.height, v.format, v.fps, "over MIDI" if v.device < 0 else fmt.tprintf("over device %d", v.device))
+		}
 		// Its controls, from a headless host.
 		th: fst.Test_Host
 		fst.daw_enable(&th)

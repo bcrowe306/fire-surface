@@ -48,6 +48,8 @@ abi_matches_the_header :: proc(t: ^testing.T) {
 		"fsurf_layout_control_t"  = abi.Layout_Control,
 		"fsurf_layout_state_t"    = abi.Layout_State,
 		"fsurf_layout_t"          = abi.Layout,
+		"fsurf_device_spec_t"     = abi.Device_Spec,
+		"fsurf_display_spec_t"    = abi.Display_Spec,
 	}
 	defer delete(types)
 	seen := 0
@@ -90,6 +92,9 @@ daw_enums_match_the_header :: proc(t: ^testing.T) {
 	Kind :: struct { prefix: string, id: typeid, bits: bool }
 	kinds := []Kind{
 		{"FSURF_LAYOUT_", abi.Layout_Kind, false},
+		{"FSURF_PIXEL_", abi.Pixel_Format, false},
+		{"FSURF_DEVICE_", abi.Device_Transport, false},
+		{"FSURF_DEVICE_", abi.Device_Flag, true},
 		{"FSURF_LAYOUT_", abi.Layout_Encoding, false},
 		{"FSURF_LAYOUT_", abi.Layout_Flag, true},
 		{"FSURF_DAW_TOPIC_", abi.Daw_Topic, true},

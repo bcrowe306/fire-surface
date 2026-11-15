@@ -1,10 +1,12 @@
 package fsurf_host
 
+import "core:encoding/base64"
 import "core:fmt"
 import "core:math"
 import "core:strings"
 
 import abi "../abi"
+import "../draw"
 
 /*
 A virtual controller: an on-screen stand-in for a surface's device, from
@@ -188,6 +190,8 @@ virtual_svg :: proc(v: ^Virtual, scale: f32 = 4, allocator := context.temp_alloc
 			a := (-135 + 270 * f64(clamp(st.position, 0, 1)) - 90) * math.PI / 180
 			fmt.sbprintf(&b, `<line x1="%.2f" y1="%.2f" x2="%.2f" y2="%.2f" stroke="%s" stroke-width="0.8" stroke-linecap="round"/>`,
 				cx, cy, cx + f32(math.cos(a)) * r * 0.85, cy + f32(math.sin(a)) * r * 0.85, fill if fill != DARK else "#9a9ba3")
+		case .Display:
+			virtual_svg_display(v, &b, c)
 		case .Fader:
 			fmt.sbprintf(&b, `<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" rx="0.6" fill="#141418" stroke="%s" stroke-width="0.4"/>`, c.x, c.y, c.w, c.h, stroke)
 			p := clamp(st.position, 0, 1)
@@ -200,6 +204,7 @@ virtual_svg :: proc(v: ^Virtual, scale: f32 = 4, allocator := context.temp_alloc
 			}
 		}
 		// Pads (in grids, as a rule) are labelled inside; the rest below.
+		if c.kind == .Display do continue // (no label)
 		size := clamp(min(c.w, c.h) * 0.22, 1.2, 2.4)
 		ty := c.y + c.h - size * 0.6 if c.kind == .Pad else c.y + c.h + size + 0.4
 		ink := "#1b1c20" if c.kind == .Pad && bright(fill) else "#9a9ba3"
@@ -240,4 +245,22 @@ xml :: proc(s: string) -> string {
 	out, _ = strings.replace_all(out, "<", "&lt;", context.temp_allocator)
 	out, _ = strings.replace_all(out, ">", "&gt;", context.temp_allocator)
 	return out
+}
+
+// What a display shows (RGBA), from the surface's display_mirror: nil
+// before its first frame. A display control's `number` is its index.
+virtual_display :: proc(v: ^Virtual, i: int) -> ^Mirror {
+	if i < 0 || i >= len(v.controls) || v.controls[i].kind != .Display do return nil
+	return instance_display(v.s, int(v.controls[i].number))
+}
+
+@(private)
+virtual_svg_display :: proc(v: ^Virtual, b: ^strings.Builder, c: Virtual_Control) {
+	fmt.sbprintf(b, `<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" fill="#000"/>`, c.x, c.y, c.w, c.h)
+	m := instance_display(v.s, int(c.number))
+	if m == nil do return
+	file := make([dynamic]u8, context.temp_allocator)
+	draw.png_rgba(m.rgba[:], m.width, m.height, &file)
+	data, _ := base64.encode(file[:], allocator = context.temp_allocator)
+	fmt.sbprintf(b, `<image x="%.2f" y="%.2f" width="%.2f" height="%.2f" preserveAspectRatio="none" style="image-rendering:pixelated" href="data:image/png;base64,%s"/>`, c.x, c.y, c.w, c.h, data)
 }

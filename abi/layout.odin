@@ -11,6 +11,7 @@ Layout_Kind :: enum u32 {
 	Encoder = 2,
 	Fader   = 3,
 	Other   = 4,
+	Display = 5,
 }
 
 // How an encoder sends its turns (FSURF_LAYOUT_ABSOLUTE ...).

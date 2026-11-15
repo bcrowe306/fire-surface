@@ -7,7 +7,7 @@ hosts the protocol. Ableton's MIDI Remote Scripts and FL Studio's MIDI
 scripting are the inspiration; CLAP is the model for how it is
 packaged, versioned and adopted.
 
-Status: stages 1 to 5 built (2026-11-15): see [protocol.md](protocol.md), [kit.md](kit.md), [daw.md](daw.md) and [tools.md](tools.md). The rest is the plan.
+Status: stages 1 to 6 built (2026-11-15): see [protocol.md](protocol.md), [kit.md](kit.md), [daw.md](daw.md), [tools.md](tools.md) and [displays.md](displays.md). Stage 7 is the plan.
 
 ## Goals
 
@@ -404,12 +404,18 @@ Pads), documented, and pushed.
    test host by control name, and the `fsurf` command-line tool (scan,
    info, scripted runs). Their panels in a host's UI come with Pads
    (stage 7).
-6. **Displays**: the draw kit, USB bulk and HID through the host, frame
-   pacing, mirrored in the virtual controller; an example display
-   surface.
+6. **Displays** (built): protocol 0.3 (devices and displays in the
+   descriptor; device_write, display_mirror; on_device, on_device_read,
+   on_display_frame); the host opening devices through the app, pacing
+   frames, keeping mirrors for the virtual controller; the draw kit
+   (`draw`: shapes, a bitmap font, widgets, RGB565/BGR565/RGB888/1-bit
+   rows and pages, Push 2's frames, PNG); the kit's displays and text
+   displays; an example (`screen_odin`). Anti-aliased TrueType fonts and
+   a libusb/hidapi backend wait (the backend comes with Pads).
 7. **Pads moves over**: `fire:surface` replaced, `route` on Pads' MIDI
    path before the engine, controller ports found by `host_set_ports`,
-   `fsurf.daw` offered from the Pads API, `pads_mini` ported,
+   `fsurf.daw` offered from the Pads API, USB and HID through libusb and
+   hidapi, `pads_mini` ported,
    `fire.pads` components, Settings → Control Surfaces, the guides.
 
 ## Questions for later

@@ -40,5 +40,6 @@ cc_build examples/hello_c/hello.c "$OUT/hello_c_2.fsurf" shared HELLO_BYTE=2 # f
 odin build examples/hello_odin -build-mode:dll -vet -strict-style -out:"$OUT/hello_odin.fsurf"
 odin build examples/grid_odin -build-mode:dll -vet -strict-style -out:"$OUT/grid_odin.fsurf"
 odin build examples/keys_odin -build-mode:dll -vet -strict-style -out:"$OUT/keys_odin.fsurf"
+odin build examples/screen_odin -build-mode:dll -vet -strict-style -out:"$OUT/screen_odin.fsurf"
 odin build tools/fsurf -vet -strict-style -out:"$OUT/fsurf$EXE"
 echo "built $OUT"

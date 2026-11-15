@@ -28,10 +28,10 @@ for tag, body, td in re.findall(r'typedef struct (\w+) \{(.*?)\n\} (\w+);', h, r
         for name in names:
             out.append(f'\tF({td}, {name})')
 # The extension's enumerators, to check against the Odin enums.
-for body in re.findall(r'enum \{(.*?)\};', strip('fsurf_daw.h') + strip('fsurf_layout.h'), re.S):
+for body in re.findall(r'enum \{(.*?)\};', strip('fsurf.h') + strip('fsurf_daw.h') + strip('fsurf_layout.h'), re.S):
     for item in body.split(','):
         name = item.split('=')[0].strip()
-        if name.startswith('FSURF_DAW_') or name.startswith('FSURF_LAYOUT_'):
+        if name.startswith(('FSURF_DAW_', 'FSURF_LAYOUT_', 'FSURF_PIXEL_', 'FSURF_DEVICE_')):
             out.append(f'\tprintf("E {name} %d\\n", (int){name});')
 out.append('\treturn 0;\n}')
 (root / 'tests/layout/layout.c').write_text('\n'.join(out) + '\n')

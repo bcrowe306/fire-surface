@@ -1,6 +1,7 @@
 package fsurf_host
 
 import "base:runtime"
+import "core:fmt"
 import "core:mem"
 import "core:strings"
 import "core:time"
@@ -34,6 +35,13 @@ Host_Config :: struct {
 	// Hot reload: a watched library was reloaded (ok), or its new build
 	// didn't load (the old one goes on).
 	on_reload:     proc(user: rawptr, l: ^Library, ok: bool),
+	// Devices other than MIDI (a descriptor's devices: USB, HID). Open one
+	// for a surface being activated (true if it did), write to it, close it
+	// after the surface is deactivated. nil: none opened. Their reads come
+	// back with `instance_device_read`, on the surface thread.
+	device_open:   proc(user: rawptr, s: ^Instance, device: u32, spec: ^abi.Device_Spec) -> bool,
+	device_write:  proc(user: rawptr, s: ^Instance, device: u32, bytes: []u8) -> bool,
+	device_close:  proc(user: rawptr, s: ^Instance, device: u32),
 }
 
 // Runs surfaces. Surface thread only. Fields are internal.
@@ -93,6 +101,17 @@ Instance :: struct {
 	device:     ^Device, // what detection made it for, or nil
 	rules:      [dynamic]Compiled_Rule, // its claim table
 	rule_bytes: [dynamic]u8,
+	devices:    [dynamic]bool, // which of its devices are open
+	displays:   [dynamic]Mirror, // what its displays show (display_mirror)
+}
+
+// What a surface's display shows, as it last gave it to the host: RGBA,
+// rows top to bottom.
+Mirror :: struct {
+	width, height: int,
+	rgba:          [dynamic]u8,
+	frames:        int, // how many it gave
+	next_ns:       u64, // its next on_display_frame
 }
 
 // Why a surface couldn't be made.
@@ -161,6 +180,7 @@ host_update :: proc(h: ^Host) {
 	resolve(h)
 	publish_routes(h)
 	router_collect(&h.router, h.allocator)
+	display_frames(h, now)
 	for i := 0; i < len(h.instances); i += 1 {
 		s := h.instances[i]
 		if s.state == .Active && s.surface.on_idle != nil do s.surface.on_idle(s.surface)
@@ -178,6 +198,8 @@ instance_create :: proc(h: ^Host, l: ^Library, surface_id: string) -> (^Instance
 	if h.next_uid == 0 do h.next_uid = 1
 	s.rules = make([dynamic]Compiled_Rule, h.allocator)
 	s.rule_bytes = make([dynamic]u8, h.allocator)
+	s.devices = make([dynamic]bool, h.allocator)
+	s.displays = make([dynamic]Mirror, h.allocator)
 	s.settings = make([dynamic]u8, h.allocator)
 	s.ports = make([dynamic]abi.Port, h.allocator)
 	s.port_names = make([dynamic]cstring, h.allocator)
@@ -201,6 +223,8 @@ instance_create :: proc(h: ^Host, l: ^Library, surface_id: string) -> (^Instance
 		identified    = c_identified,
 		set_rules     = c_set_rules,
 		inject_midi   = c_inject_midi,
+		device_write  = c_device_write,
+		display_mirror = c_display_mirror,
 	}
 	id := strings.clone_to_cstring(surface_id, context.temp_allocator)
 	surf := l.factory.create(l.factory, &s.c_host, id)
@@ -285,12 +309,14 @@ instance_activate :: proc(s: ^Instance, ports: []Port_Assignment) -> bool {
 	s.state = .Active
 	s.host.routes_dirty = true
 	publish_routes(s.host)
+	devices_open(s)
 	return true
 }
 
 // Its device is gone, or it is turned off: deactivates the surface.
 instance_deactivate :: proc(s: ^Instance) {
 	if s.state == .Active do s.surface.deactivate(s.surface)
+	devices_close(s)
 	free_ports(s)
 	s.state = .Ready
 	s.host.routes_dirty = true
@@ -351,6 +377,7 @@ instance_extension :: proc(s: ^Instance, id: string) -> rawptr {
 instance_destroy :: proc(s: ^Instance) {
 	h := s.host
 	if s.state == .Active do s.surface.deactivate(s.surface)
+	devices_close(s)
 	s.state = .Ready
 	for &t in h.timers do if t.instance == s do t.stopped = true
 	if !h.updating {
@@ -376,6 +403,9 @@ instance_free :: proc(s: ^Instance) {
 	delete(s.settings)
 	delete(s.rules)
 	delete(s.rule_bytes)
+	delete(s.devices)
+	for m in s.displays do delete(m.rgba)
+	delete(s.displays)
 	free(s, s.host.allocator)
 }
 
@@ -520,6 +550,7 @@ deliver :: proc(h: ^Host, uid, port: u32, bytes: []u8, time_ns: u64) {
 instance_detach :: proc(s: ^Instance) {
 	h := s.host
 	if s.state == .Active do s.surface.deactivate(s.surface)
+	devices_close(s)
 	s.state = .Ready
 	for &t in h.timers do if t.instance == s do t.stopped = true
 	if !h.updating {
@@ -568,4 +599,98 @@ instance_destroy_detached :: proc(s: ^Instance) {
 		set_state(h, d, .Failed)
 	}
 	instance_free(s)
+}
+
+// ── Devices and displays ──────────────────────────────────────────────
+
+@(private)
+devices_open :: proc(s: ^Instance) {
+	d := s.descriptor
+	clear(&s.devices)
+	resize(&s.displays, int(d.display_count))
+	if d.struct_size < size_of(abi.Descriptor) do return
+	now := host_now_ns(s.host)
+	for &m in s.displays do m.next_ns = now
+	for i in 0 ..< int(d.device_count) {
+		spec := &d.devices[i]
+		ok := s.host.config.device_open != nil && s.host.config.device_open(s.host.config.user, s, u32(i), spec)
+		append(&s.devices, ok)
+		if !ok && .Optional not_in spec.flags && s.host.config.log != nil {
+			s.host.config.log(s.host.config.user, s, .Warning, fmt.tprintf("%s: its device %q (%04X:%04X) isn't open", d.name, spec.role, spec.vendor_id, spec.product_id))
+		}
+		if ok && s.surface.on_device != nil do s.surface.on_device(s.surface, u32(i), true)
+	}
+}
+
+@(private)
+devices_close :: proc(s: ^Instance) {
+	for open, i in s.devices do if open && s.host.config.device_close != nil do s.host.config.device_close(s.host.config.user, s, u32(i))
+	clear(&s.devices)
+}
+
+// A device of the surface's went away, or came back (its MIDI ports still
+// there): the surface is told, and writes to it fail while it's gone.
+instance_device_state :: proc(s: ^Instance, device: int, open: bool) {
+	if device < 0 || device >= len(s.devices) || s.devices[device] == open do return
+	s.devices[device] = open
+	if s.state == .Active && s.surface.on_device != nil do s.surface.on_device(s.surface, u32(device), open)
+}
+
+// What one of the surface's devices sent (a USB IN transfer, an HID
+// report), on the surface thread.
+instance_device_read :: proc(s: ^Instance, device: int, bytes: []u8) {
+	if s.state != .Active || s.surface.on_device_read == nil || len(bytes) == 0 do return
+	if device < 0 || device >= len(s.devices) || !s.devices[device] do return
+	s.surface.on_device_read(s.surface, u32(device), raw_data(bytes), u32(len(bytes)))
+}
+
+// What a surface's display shows (from its display_mirror), or nil.
+instance_display :: proc(s: ^Instance, display: int) -> ^Mirror {
+	if display < 0 || display >= len(s.displays) || s.displays[display].frames == 0 do return nil
+	return &s.displays[display]
+}
+
+// Each display's frame, at its rate (behind: once, not a burst).
+@(private)
+display_frames :: proc(h: ^Host, now: u64) {
+	for i := 0; i < len(h.instances); i += 1 {
+		s := h.instances[i]
+		if s.state != .Active || s.surface.on_display_frame == nil do continue
+		d := s.descriptor
+		if d.struct_size < size_of(abi.Descriptor) do continue
+		for k in 0 ..< min(int(d.display_count), len(s.displays)) {
+			fps := d.displays[k].fps
+			if fps == 0 do continue
+			m := &s.displays[k]
+			if now < m.next_ns do continue
+			period := u64(1_000_000_000 / fps)
+			m.next_ns = max(m.next_ns + period, now)
+			s.surface.on_display_frame(s.surface, u32(k))
+			if s.state != .Active do break
+		}
+	}
+}
+
+@(private)
+c_device_write :: proc "c" (h: ^abi.Host, device: u32, bytes: [^]u8, size: u32) -> bool {
+	s := from(h)
+	context = s.host.ctx
+	if int(device) >= len(s.devices) || !s.devices[device] || bytes == nil || size == 0 || s.host.config.device_write == nil do return false
+	return s.host.config.device_write(s.host.config.user, s, device, bytes[:size])
+}
+
+@(private)
+c_display_mirror :: proc "c" (h: ^abi.Host, display: u32, rgba: [^]u8, width, height: u32) {
+	s := from(h)
+	context = s.host.ctx
+	if rgba == nil || width == 0 || height == 0 do return
+	if int(display) >= len(s.displays) {
+		if int(display) >= int(s.descriptor.display_count) do return
+		resize(&s.displays, int(display) + 1)
+	}
+	m := &s.displays[display]
+	m.width, m.height = int(width), int(height)
+	resize(&m.rgba, int(width * height * 4))
+	runtime.mem_copy_non_overlapping(raw_data(m.rgba), rgba, len(m.rgba))
+	m.frames += 1
 }

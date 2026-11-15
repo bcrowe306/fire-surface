@@ -1,15 +1,14 @@
-# The protocol (version 0.2)
+# The protocol (version 0.3)
 
 What a `.fsurf` library and its host agree on. The authority is the
 header, [`include/fsurf.h`](../include/fsurf.h); the Odin package
 [`abi`](../abi/abi.odin) declares the same things for Odin, and a test
 checks the two have the same layout. This page is the tour.
 
-Version 0.2 is stages 1 and 2 of [the design](design.md): loading, the
-lifecycle, MIDI out, timers, settings and project state, extensions,
-detection and the claim table. The kit, `fsurf.daw` and displays come in
-later stages. (0.2 added `set_rules` and `inject_midi` to the host; a 0.1
-library doesn't load in a 0.2 host, as before 1.0 minor versions differ.)
+Version 0.3: loading, the lifecycle, MIDI out, timers, settings and
+project state, extensions, detection, the claim table (0.2), and devices
+other than MIDI and displays (0.3: [displays.md](displays.md)). Before
+1.0 a library loads only in a host of its own minor version.
 
 ## A library
 

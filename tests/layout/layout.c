@@ -35,6 +35,27 @@ int main(void) {
 	F(fsurf_identity_t, delay_ms)
 	F(fsurf_identity_t, retry_ms)
 	F(fsurf_identity_t, retries)
+	S(fsurf_device_spec_t)
+	F(fsurf_device_spec_t, struct_size)
+	F(fsurf_device_spec_t, role)
+	F(fsurf_device_spec_t, transport)
+	F(fsurf_device_spec_t, vendor_id)
+	F(fsurf_device_spec_t, product_id)
+	F(fsurf_device_spec_t, interface)
+	F(fsurf_device_spec_t, endpoint_out)
+	F(fsurf_device_spec_t, endpoint_in)
+	F(fsurf_device_spec_t, usage_page)
+	F(fsurf_device_spec_t, usage)
+	F(fsurf_device_spec_t, _reserved)
+	F(fsurf_device_spec_t, flags)
+	S(fsurf_display_spec_t)
+	F(fsurf_display_spec_t, struct_size)
+	F(fsurf_display_spec_t, name)
+	F(fsurf_display_spec_t, width)
+	F(fsurf_display_spec_t, height)
+	F(fsurf_display_spec_t, format)
+	F(fsurf_display_spec_t, fps)
+	F(fsurf_display_spec_t, device)
 	S(fsurf_descriptor_t)
 	F(fsurf_descriptor_t, struct_size)
 	F(fsurf_descriptor_t, fsurf_version)
@@ -48,6 +69,10 @@ int main(void) {
 	F(fsurf_descriptor_t, port_count)
 	F(fsurf_descriptor_t, identity)
 	F(fsurf_descriptor_t, required_extensions)
+	F(fsurf_descriptor_t, devices)
+	F(fsurf_descriptor_t, device_count)
+	F(fsurf_descriptor_t, displays)
+	F(fsurf_descriptor_t, display_count)
 	S(fsurf_rule_t)
 	F(fsurf_rule_t, port)
 	F(fsurf_rule_t, messages)
@@ -82,6 +107,8 @@ int main(void) {
 	F(fsurf_host_t, identified)
 	F(fsurf_host_t, set_rules)
 	F(fsurf_host_t, inject_midi)
+	F(fsurf_host_t, device_write)
+	F(fsurf_host_t, display_mirror)
 	S(fsurf_port_t)
 	F(fsurf_port_t, role)
 	F(fsurf_port_t, input)
@@ -103,6 +130,9 @@ int main(void) {
 	F(fsurf_surface_t, project_save)
 	F(fsurf_surface_t, project_load)
 	F(fsurf_surface_t, get_extension)
+	F(fsurf_surface_t, on_device)
+	F(fsurf_surface_t, on_device_read)
+	F(fsurf_surface_t, on_display_frame)
 	S(fsurf_surface_factory_t)
 	F(fsurf_surface_factory_t, count)
 	F(fsurf_surface_factory_t, get_descriptor)
@@ -161,6 +191,15 @@ int main(void) {
 	F(fsurf_layout_t, find)
 	F(fsurf_layout_t, owner)
 	F(fsurf_layout_t, state)
+	printf("E FSURF_DEVICE_USB_BULK %d\n", (int)FSURF_DEVICE_USB_BULK);
+	printf("E FSURF_DEVICE_HID %d\n", (int)FSURF_DEVICE_HID);
+	printf("E FSURF_DEVICE_OPTIONAL %d\n", (int)FSURF_DEVICE_OPTIONAL);
+	printf("E FSURF_PIXEL_RGB565 %d\n", (int)FSURF_PIXEL_RGB565);
+	printf("E FSURF_PIXEL_BGR565 %d\n", (int)FSURF_PIXEL_BGR565);
+	printf("E FSURF_PIXEL_RGB888 %d\n", (int)FSURF_PIXEL_RGB888);
+	printf("E FSURF_PIXEL_MONO %d\n", (int)FSURF_PIXEL_MONO);
+	printf("E FSURF_PIXEL_MONO_PAGES %d\n", (int)FSURF_PIXEL_MONO_PAGES);
+	printf("E FSURF_PIXEL_TEXT %d\n", (int)FSURF_PIXEL_TEXT);
 	printf("E FSURF_DAW_TRANSPORT %d\n", (int)FSURF_DAW_TRANSPORT);
 	printf("E FSURF_DAW_TRACKS %d\n", (int)FSURF_DAW_TRACKS);
 	printf("E FSURF_DAW_DEVICES %d\n", (int)FSURF_DAW_DEVICES);
@@ -238,6 +277,7 @@ int main(void) {
 	printf("E FSURF_LAYOUT_ENCODER %d\n", (int)FSURF_LAYOUT_ENCODER);
 	printf("E FSURF_LAYOUT_FADER %d\n", (int)FSURF_LAYOUT_FADER);
 	printf("E FSURF_LAYOUT_OTHER %d\n", (int)FSURF_LAYOUT_OTHER);
+	printf("E FSURF_LAYOUT_DISPLAY %d\n", (int)FSURF_LAYOUT_DISPLAY);
 	printf("E FSURF_LAYOUT_ABSOLUTE %d\n", (int)FSURF_LAYOUT_ABSOLUTE);
 	printf("E FSURF_LAYOUT_TWOS_COMPLEMENT %d\n", (int)FSURF_LAYOUT_TWOS_COMPLEMENT);
 	printf("E FSURF_LAYOUT_SIGNED_BIT %d\n", (int)FSURF_LAYOUT_SIGNED_BIT);

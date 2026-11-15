@@ -44,13 +44,27 @@ c_get_extension :: proc "c" (s: ^abi.Surface, id: cstring) -> rawptr {
 }
 
 @(private)
-layout_count :: proc "c" (s: ^abi.Surface) -> u32 { return u32(len(from(s).controls)) }
+layout_count :: proc "c" (s: ^abi.Surface) -> u32 { return u32(len(from(s).controls) + len(from(s).displays)) }
 
 @(private)
 layout_get :: proc "c" (s: ^abi.Surface, i: u32, out: ^abi.Layout_Control) -> bool {
 	cs := from(s)
-	if int(i) >= len(cs.controls) || out == nil do return false
+	if out == nil do return false
 	context = runtime.default_context()
+	if int(i) >= len(cs.controls) {
+		k := int(i) - len(cs.controls)
+		if k >= len(cs.displays) do return false
+		d := cs.displays[k]
+		name := fmt.bprintf(cs.layout_name[:len(cs.layout_name) - 1], "%s", d.def.name)
+		cs.layout_name[len(name)] = 0
+		o := abi.Layout_Control{
+			struct_size = out.struct_size if out.struct_size > 0 else size_of(abi.Layout_Control),
+			name = cstring(&cs.layout_name[0]), kind = .Display, x = d.x, y = d.y, w = d.w, h = d.h, number = u8(k),
+		}
+		size := min(int(out.struct_size) if out.struct_size > 0 else size_of(abi.Layout_Control), size_of(abi.Layout_Control))
+		runtime.mem_copy_non_overlapping(out, &o, size)
+		return true
+	}
 	c := cs.controls[i]
 	name := c.name
 	if c.grid != nil do name = fmt.bprintf(cs.layout_name[:len(cs.layout_name) - 1], "%s %d,%d", c.name, c.row, c.col)
@@ -115,7 +129,7 @@ layout_find :: proc "c" (s: ^abi.Surface, output: bool, port: u32, b: [^]u8, siz
 @(private)
 layout_owner :: proc "c" (s: ^abi.Surface, i: u32) -> cstring {
 	cs := from(s)
-	if int(i) >= len(cs.controls) do return nil
+	if int(i) >= len(cs.controls) do return nil // (displays have none)
 	context = runtime.default_context()
 	o := top_owner(cs.controls[i])
 	if o == nil do return nil
@@ -129,7 +143,13 @@ layout_owner :: proc "c" (s: ^abi.Surface, i: u32) -> cstring {
 @(private)
 layout_state :: proc "c" (s: ^abi.Surface, i: u32, out: ^abi.Layout_State) -> bool {
 	cs := from(s)
-	if int(i) >= len(cs.controls) || out == nil do return false
+	if out == nil || int(i) >= len(cs.controls) + len(cs.displays) do return false
+	if int(i) >= len(cs.controls) {
+		st := abi.Layout_State{struct_size = size_of(abi.Layout_State), channel = -1}
+		size := min(int(out.struct_size) if out.struct_size > 0 else size_of(abi.Layout_State), size_of(abi.Layout_State))
+		runtime.mem_copy_non_overlapping(out, &st, size)
+		return true
+	}
 	c := cs.controls[i]
 	st := abi.Layout_State{struct_size = size_of(abi.Layout_State), channel = -1, pressed = c.pressed, position = c.value}
 	if c.has_position do st.position = c.position

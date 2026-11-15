@@ -31,6 +31,7 @@ enum {
 	FSURF_LAYOUT_ENCODER = 2, /* turned */
 	FSURF_LAYOUT_FADER = 3,   /* moved along its longer side (faders, sliders, strips, wheels) */
 	FSURF_LAYOUT_OTHER = 4,   /* not used with a mouse (a SysEx control) */
+	FSURF_LAYOUT_DISPLAY = 5, /* a display: `number` is its index (display_mirror shows it) */
 };
 
 /* How an encoder sends its turns (fsurf_layout_control_t.encoding). */

@@ -73,6 +73,9 @@ Spec :: struct {
 	// The device's size, in the units its controls are placed in (`place`):
 	// for tools (fsurf.layout).
 	width, height:       f32,
+	// Devices other than MIDI (USB, HID) and displays (display.odin).
+	devices:             []Device_Def,
+	displays:            []Display_Def,
 	// What isn't owned: by default the surface takes the messages of its
 	// controls even when no component owns them (a button doesn't play a
 	// note); with this, they go to the host.
@@ -89,6 +92,9 @@ Spec :: struct {
 	on_midi:       proc(cs: ^Control_Surface, port: int, m: Message) -> bool,
 	// Identify_Method.Surface: the ports are open; answer with `identified`.
 	identify:      proc(cs: ^Control_Surface),
+	// Its devices other than MIDI: one opened or closed; what one sent.
+	on_device:      proc(cs: ^Control_Surface, device: int, open: bool),
+	on_device_read: proc(cs: ^Control_Surface, device: int, bytes: []u8),
 	// Its part of a project.
 	save:          proc(cs: ^Control_Surface, out: ^[dynamic]u8) -> bool,
 	load:          proc(cs: ^Control_Surface, data: []u8) -> bool,
@@ -138,6 +144,7 @@ Control_Surface :: struct {
 	layout:       abi.Layout,
 	layout_name:  [96]u8,
 	layout_owner: [96]u8,
+	displays:     [dynamic]^Display,
 }
 
 // A library of kit surfaces: what a .fsurf's entry points at.
@@ -156,6 +163,8 @@ Built :: struct {
 	spec:       ^Spec,
 	desc:       abi.Descriptor,
 	ports:      []abi.Port_Spec,
+	devices:    []abi.Device_Spec,
+	displays:   []abi.Display_Spec,
 	identity:   abi.Identity,
 	strings:    [dynamic]cstring,
 	arrays:     [dynamic][]cstring,
@@ -201,6 +210,8 @@ built_free :: proc(l: ^Library) {
 		delete(b.strings)
 		delete(b.arrays)
 		delete(b.ports)
+		delete(b.devices)
+		delete(b.displays)
 		free(b)
 	}
 	delete(l.built)
@@ -236,12 +247,30 @@ build :: proc(s: ^Spec) -> ^Built {
 		flags := p.flags if p.flags != {} else {.Input, .Output}
 		b.ports[i] = {struct_size = size_of(abi.Port_Spec), role = cs(b, p.role), flags = flags, input_names = list(b, p.inputs), output_names = list(b, p.outputs)}
 	}
+	b.devices = make([]abi.Device_Spec, len(s.devices))
+	for d, i in s.devices {
+		b.devices[i] = {
+			struct_size = size_of(abi.Device_Spec), role = cs(b, d.role), transport = d.transport,
+			vendor_id = d.vendor_id, product_id = d.product_id, interface = i32(d.interface),
+			endpoint_out = d.endpoint_out, endpoint_in = d.endpoint_in, usage_page = d.usage_page, usage = d.usage,
+			flags = {.Optional} if d.optional else {},
+		}
+	}
+	b.displays = make([]abi.Display_Spec, len(s.displays))
+	for d, i in s.displays {
+		b.displays[i] = {
+			struct_size = size_of(abi.Display_Spec), name = cs(b, d.name), width = u32(d.width), height = u32(d.height),
+			format = d.format, fps = u32(d.fps), device = i32(d.device),
+		}
+	}
 	b.desc = {
 		struct_size = size_of(abi.Descriptor), fsurf_version = abi.VERSION,
 		id = cs(b, s.id), name = cs(b, s.name), vendor = cs(b, s.vendor), version = cs(b, s.version),
 		url = cs(b, s.url), description = cs(b, s.description),
 		ports = raw_data(b.ports), port_count = u32(len(b.ports)),
 		required_extensions = list(b, s.required_extensions),
+		devices = raw_data(b.devices), device_count = u32(len(b.devices)),
+		displays = raw_data(b.displays), display_count = u32(len(b.displays)),
 	}
 	if id := s.identity; id != nil {
 		b.identity = {
@@ -299,8 +328,11 @@ factory_create :: proc "c" (f: ^abi.Surface_Factory, host: ^abi.Host, id: cstrin
 			activate = c_activate, deactivate = c_deactivate,
 			on_midi = c_on_midi, on_timer = c_on_timer, on_idle = c_on_idle,
 			project_save = c_save, project_load = c_load, get_extension = c_get_extension,
+			on_device = c_on_device, on_device_read = c_on_device_read, on_display_frame = c_on_display_frame,
 		}
 		layout_init(cs)
+		cs.displays = make([dynamic]^Display)
+		displays_make(cs)
 		return &cs.surface
 	}
 	return nil
@@ -331,6 +363,7 @@ c_destroy :: proc "c" (s: ^abi.Surface) {
 	delete(cs.components); delete(cs.roots); delete(cs.controls); delete(cs.matrices)
 	delete(cs.lookup); delete(cs.sysex_controls); delete(cs.tasks); delete(cs.last_rules); delete(cs.ports)
 	if cs.own_skin do skin_destroy(cs.skin)
+	displays_free(cs)
 	context.temp_allocator = runtime.default_context().temp_allocator
 	virtual.arena_destroy(&cs.temp)
 	free(cs)
@@ -389,6 +422,10 @@ c_activate :: proc "c" (s: ^abi.Surface, ports: [^]abi.Port, count: u32) -> bool
 	cs.identifying = false
 	cs.active = true
 	for c in cs.controls do c.has_last = false // the device knows nothing: send everything again
+	for d in cs.displays {
+		d.full = true
+		d.invalid = true
+	}
 	for m in cs.spec.hello do send(cs, m)
 	cs.timer = cs.host.timer_start(cs.host, TICK_MS)
 	cs.daw_subscribe_sent = false

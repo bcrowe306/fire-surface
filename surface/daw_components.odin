@@ -234,6 +234,8 @@ Device :: struct {
 	sensitivity: f64, // an encoder's step on a continuous parameter (0 = 1/200)
 	controls:    [dynamic]^Control, // param i's (nil: none)
 	device:      int, // the selected device we drew
+	// The bank or device changed (or its parameters): for a display to follow.
+	on_change:   proc(d: ^Device),
 }
 
 // A device component of `params` parameters a bank.
@@ -253,6 +255,7 @@ device_make :: proc(cs: ^Control_Surface, name: string, params := 8, priority :=
 			d.bank = 0
 		}
 		redraw_owned(c)
+		if d.on_change != nil do d.on_change(d)
 	}
 	d.on_activate = proc(c: ^Component) { (^Device)(c).device = int(daw_get(c.cs, .Selected_Device)) }
 	d.on_owned = proc(c: ^Component, slot: string, control: ^Control) {
@@ -306,6 +309,7 @@ device_make :: proc(cs: ^Control_Surface, name: string, params := 8, priority :=
 			d.bank = b
 			notify(cs, fmt.tprintf("%s: Bank %d", daw_text(cs, .Device_Name, d.device), b + 1))
 			redraw_owned(c)
+			if d.on_change != nil do d.on_change(d)
 		case "prev_device", "next_device":
 			next := d.device + (1 if e.slot == "next_device" else -1)
 			if next < 0 || next >= int(daw_get(cs, .Device_Count)) do return
@@ -314,6 +318,7 @@ device_make :: proc(cs: ^Control_Surface, name: string, params := 8, priority :=
 				d.bank = 0
 				notify(cs, daw_text(cs, .Device_Name, next))
 				redraw_owned(c)
+				if d.on_change != nil do d.on_change(d)
 			}
 		case "on":
 			daw_toggle(cs, .Device_On, d.device)

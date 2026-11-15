@@ -12,7 +12,7 @@ A surface library exports `fsurf_entry` (an `Entry`):
 package fsurf_abi
 
 // The header's version: FSURF_VERSION_MAJOR, _MINOR, _REVISION.
-VERSION :: Version{0, 2, 0}
+VERSION :: Version{0, 3, 0}
 
 // The symbol a .fsurf exports: an `Entry`.
 ENTRY_SYMBOL :: "fsurf_entry"
@@ -95,6 +95,57 @@ Identity :: struct {
 	retries:      u32,
 }
 
+// A device other than MIDI (fsurf_device_spec_t).
+Device_Spec :: struct {
+	struct_size:  u32,
+	role:         cstring,
+	transport:    Device_Transport,
+	vendor_id:    u16,
+	product_id:   u16,
+	interface:    i32, // -1 = any
+	endpoint_out: u8,
+	endpoint_in:  u8,
+	usage_page:   u16,
+	usage:        u16,
+	_reserved:    u16,
+	flags:        Device_Flags,
+}
+
+// How a device is reached (FSURF_DEVICE_USB_BULK, _HID).
+Device_Transport :: enum u32 {
+	Usb_Bulk = 0,
+	Hid      = 1,
+}
+
+// FSURF_DEVICE_OPTIONAL.
+Device_Flag :: enum u32 {
+	Optional = 0,
+}
+
+// A device spec's flags.
+Device_Flags :: distinct bit_set[Device_Flag; u32]
+
+// A display (fsurf_display_spec_t).
+Display_Spec :: struct {
+	struct_size: u32,
+	name:        cstring,
+	width:       u32,
+	height:      u32,
+	format:      Pixel_Format,
+	fps:         u32,
+	device:      i32, // -1: over MIDI
+}
+
+// A display's pixels (FSURF_PIXEL_*).
+Pixel_Format :: enum u32 {
+	Rgb565     = 0,
+	Bgr565     = 1,
+	Rgb888     = 2,
+	Mono       = 3,
+	Mono_Pages = 4,
+	Text       = 5,
+}
+
 // One kind of surface: a controller model (fsurf_descriptor_t).
 Descriptor :: struct {
 	struct_size:         u32,
@@ -109,6 +160,10 @@ Descriptor :: struct {
 	port_count:          u32,
 	identity:            ^Identity, // nil = by port names alone
 	required_extensions: [^]cstring, // null-terminated, or nil
+	devices:             [^]Device_Spec,
+	device_count:        u32,
+	displays:            [^]Display_Spec,
+	display_count:       u32,
 }
 
 // A rule of a surface's claim table (fsurf_rule_t): which messages it
@@ -195,6 +250,8 @@ Host :: struct {
 	identified:    proc "c" (host: ^Host, ok: bool),
 	set_rules:     proc "c" (host: ^Host, rules: [^]Rule, count: u32) -> bool,
 	inject_midi:   proc "c" (host: ^Host, port: u32, bytes: [^]u8, size: u32) -> bool,
+	device_write:  proc "c" (host: ^Host, device: u32, bytes: [^]u8, size: u32) -> bool,
+	display_mirror: proc "c" (host: ^Host, display: u32, rgba: [^]u8, width, height: u32),
 }
 
 // A port pair given at activate (fsurf_port_t).
@@ -222,6 +279,9 @@ Surface :: struct {
 	project_save:  proc "c" (surface: ^Surface, stream: ^Ostream) -> bool,
 	project_load:  proc "c" (surface: ^Surface, stream: ^Istream) -> bool,
 	get_extension: proc "c" (surface: ^Surface, id: cstring) -> rawptr,
+	on_device:        proc "c" (surface: ^Surface, device: u32, open: bool),
+	on_device_read:   proc "c" (surface: ^Surface, device: u32, bytes: [^]u8, size: u32),
+	on_display_frame: proc "c" (surface: ^Surface, display: u32),
 }
 
 // The factory of a library's surfaces (fsurf_surface_factory_t).
