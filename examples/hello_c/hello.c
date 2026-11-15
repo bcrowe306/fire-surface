@@ -13,6 +13,7 @@
  *
  * MIT licence.
  */
+#define _CRT_SECURE_NO_WARNINGS /* MSVC: sscanf and snprintf are fine here */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
