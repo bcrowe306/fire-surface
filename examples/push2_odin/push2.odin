@@ -5,13 +5,13 @@ Ableton's published interface (github.com/Ableton/push-interface).
 
 - **Ports:** the User Port (Ableton Live keeps the Live Port; turn Live's
   Track/Sync/Remote switches for Push 2's User Port off to run both).
-  When it starts it sets its colours and puts Push 2 in User mode; when
-  it stops, back in Live mode.
+  When it starts it sets its colours, turns the display's backlight on and
+  puts Push 2 in User mode; when it stops, back in Live mode.
 - **The display** (960 x 160, USB bulk): a column for each of the ring's
   eight tracks (its name in its colour, and its volume; or the selected
   device's parameters), and a line for the transport and the mode. Sent
-  when what it shows changes, and at least each second (Push 2 turns its
-  display off after two without a frame).
+  each time the host asks (30 a second), a steady stream as Live sends:
+  drawn again only when what it shows changes.
 - **Pads** (8 x 8): Note, a keyboard in the host's scale (Octave Up and
   Down); Layout, drum pads (Repeat held: note repeat); Session, the
   host's clips in an 8 x 8 window (the arrows move it).
@@ -101,6 +101,10 @@ PALETTE :: [?]struct { index: u8, rgb: u32, white: u8 }{
 MIDI_MODE_LIVE :: [?]u8{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x0A, 0x00, 0xF7}
 MIDI_MODE_USER :: [?]u8{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x0A, 0x01, 0xF7}
 REAPPLY_PALETTE :: [?]u8{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x05, 0xF7}
+// Set Display Brightness 255: the display's backlight on ("to see
+// something drawn on the display, the display backlight LEDs must be
+// turned on"; USB powered, Push 2 limits it).
+DISPLAY_BRIGHTNESS :: [?]u8{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x08, 0x7F, 0x01, 0xF7}
 
 // The surface's state.
 Push2 :: struct {
@@ -113,12 +117,14 @@ Push2 :: struct {
 	x, y:          f32, // setup: where the next side button goes
 }
 
-// Hello: the palette, then User mode (the one command with a reply, last).
-hello_messages: [len(PALETTE) + 2][]u8
+// Hello: the palette, the backlight, then User mode (the one command with
+// a reply, last).
+hello_messages: [len(PALETTE) + 3][]u8
 hello_bytes: [len(PALETTE)][17]u8
 live := MIDI_MODE_LIVE
 user := MIDI_MODE_USER
 reapply := REAPPLY_PALETTE
+backlight := DISPLAY_BRIGHTNESS
 
 spec := kit.Spec{
 	id          = "org.fsurf.example.push2",
@@ -161,7 +167,8 @@ fsurf_entry := abi.Entry{
 			hello_messages[i] = hello_bytes[i][:]
 		}
 		hello_messages[len(PALETTE)] = reapply[:]
-		hello_messages[len(PALETTE) + 1] = user[:]
+		hello_messages[len(PALETTE) + 1] = backlight[:]
+		hello_messages[len(PALETTE) + 2] = user[:]
 		spec.hello = hello_messages[:]
 		return kit.library_init(&library)
 	},
@@ -341,14 +348,11 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	screen := kit.component_make(cs, "Screen")
 	screen.daw_topics = {.Transport, .Tracks, .Mixer, .Devices, .Parameters}
 	screen.on_daw = proc(c: ^kit.Component, e: abi.Daw_Event) { invalidate(c.cs) }
-	screen.on_activate = proc(c: ^kit.Component) {
-		invalidate(c.cs)
-		// Push 2 turns its display off after two seconds without a frame.
-		kit.task_every(c.cs, 1000, proc(data: rawptr) { invalidate((^kit.Control_Surface)(data)) }, c.cs, c)
-	}
+	screen.on_activate = proc(c: ^kit.Component) { invalidate(c.cs) }
 	d := kit.display(cs, 0)
 	d.draw = draw_screen
 	d.send = kit.display_send_push2
+	d.resend = true // (a steady stream, as Live sends)
 	kit.place_display(d, 66, 30, 234, 39)
 
 	kit.ring_setup(cs, 8, 8)
@@ -364,12 +368,13 @@ invalidate :: proc(cs: ^kit.Control_Surface) {
 
 // The display: a column a track, and a line at the bottom.
 draw_screen :: proc(d: ^kit.Display, cv: ^draw.Canvas) {
+	// (Bold: the display is small, and dim on USB power alone.)
 	cs := d.cs
 	p := (^Push2)(cs.user)
 	f := &draw.FONT_5X7
 	draw.clear(cv, 0x000000)
 	if cs.daw == nil {
-		draw.text_in(cv, f, {0, 0, cv.width, cv.height}, "No host DAW", draw.GREY, .Center, 3)
+		draw.text_in(cv, f, {0, 0, cv.width, cv.height}, "No host DAW", draw.WHITE, .Center, 4)
 		return
 	}
 	device_mode := kit.modes_current(p.encoders) == "device"
@@ -382,34 +387,39 @@ draw_screen :: proc(d: ^kit.Display, cv: ^draw.Canvas) {
 			k := p.device.bank * 8 + i
 			if k >= n_params do continue
 			v := f32(kit.daw_get(cs, .Param_Value, k))
-			draw.text_in(cv, f, {x + 4, 6, COL - 8, 16}, kit.daw_text(cs, .Param_Name, k), draw.GREY, .Center, 2)
-			draw.knob(cv, x + COL / 2, 70, 30, v, draw.ORANGE, thickness = 5)
-			draw.text_in(cv, f, {x + 4, 108, COL - 8, 16}, kit.daw_text(cs, .Param_Value, k), draw.WHITE, .Center, 2)
+			draw.text_in(cv, f, {x + 2, 4, COL - 4, 24}, kit.daw_text(cs, .Param_Name, k), draw.WHITE, .Center, 2)
+			draw.knob(cv, x + COL / 2, 68, 32, v, draw.ORANGE, track = 0x404040, thickness = 7)
+			draw.text_in(cv, f, {x + 2, 104, COL - 4, 24}, kit.daw_text(cs, .Param_Value, k), draw.WHITE, .Center, 3)
 			continue
 		}
 		t, ok := kit.mixer_strip_track(p.volumes, i)
 		if !ok do continue
 		colour := u32(kit.daw_get(cs, .Track_Color, t))
+		if colour == 0 do colour = 0x5080ff
 		sel := t == kit.selected_track(cs)
-		draw.fill_rect(cv, {x + 2, 0, COL - 4, 24}, colour if sel else draw.mix(0x000000, colour, 90))
-		draw.text_in(cv, f, {x + 6, 4, COL - 12, 16}, kit.daw_text(cs, .Track_Name, t), draw.WHITE if sel else 0xd0d0d0, .Center, 2)
+		// Its name on its colour (the selected one bright).
+		draw.fill_rect(cv, {x + 3, 0, COL - 6, 30}, colour if sel else draw.mix(0x000000, colour, 150))
+		draw.text_in(cv, f, {x + 5, 2, COL - 10, 26}, kit.daw_text(cs, .Track_Name, t), draw.WHITE, .Center, 3)
+		// Its volume: a wide bar, and in dB.
 		vol := f32(kit.daw_get(cs, .Track_Volume, t))
-		draw.bar(cv, {x + COL / 2 - 10, 34, 20, 70}, vol, colour)
-		draw.text_in(cv, f, {x + 4, 108, COL - 8, 16}, kit.daw_text(cs, .Track_Volume, t), draw.WHITE, .Center, 2)
-		if kit.daw_flag(cs, .Track_Mute, t) do draw.text_in(cv, f, {x + 4, 108, 24, 16}, "M", draw.ORANGE, .Left, 2)
+		h := int(64 * clamp(vol, 0, 1))
+		draw.fill_rect(cv, {x + COL / 2 - 22, 38, 44, 64}, 0x303030)
+		draw.fill_rect(cv, {x + COL / 2 - 22, 38 + 64 - h, 44, h}, colour) // (filling up)
+		draw.text_in(cv, f, {x + 2, 106, COL - 4, 22}, kit.daw_text(cs, .Track_Volume, t), draw.WHITE, .Center, 2)
+		if kit.daw_flag(cs, .Track_Mute, t) do draw.text_in(cv, f, {x + 6, 40, 24, 24}, "M", draw.ORANGE, .Left, 3)
 	}
 	// The bottom line: the transport, the selected track and device, the modes.
-	draw.hline(cv, 0, cv.width - 1, 132, 0x303030)
+	draw.fill_rect(cv, {0, 132, cv.width, 28}, 0x202020)
 	playing := kit.daw_flag(cs, .Playing)
-	draw.fill_circle(cv, 14, 146, 6, draw.GREEN if playing else 0x404040)
-	if kit.daw_flag(cs, .Recording) do draw.fill_circle(cv, 32, 146, 6, draw.RED)
+	draw.fill_circle(cv, 16, 146, 9, draw.GREEN if playing else 0x606060)
+	if kit.daw_flag(cs, .Recording) do draw.fill_circle(cv, 40, 146, 9, draw.RED)
 	tempo := fmt.tprintf("%.1f BPM", kit.daw_get(cs, .Tempo))
-	draw.text(cv, f, 48, 139, tempo, draw.WHITE, 2)
+	draw.text(cv, f, 60, 136, tempo, draw.WHITE, 3)
 	t := kit.selected_track(cs)
 	shown := kit.daw_text(cs, .Track_Name, t)
 	if device_mode do shown = fmt.tprintf("%s / %s", shown, kit.daw_text(cs, .Device_Name, p.device.device))
-	draw.text_in(cv, f, {200, 138, 520, 16}, shown, draw.GREY, .Center, 2)
-	modes := fmt.tprintf("%s  %s", kit.modes_current(p.encoders), kit.modes_current(p.pads))
-	if kit.modes_current(p.pads) == "note" do modes = fmt.tprintf("%s (octave %d)", modes, p.keyboard.octave)
-	draw.text_in(cv, f, {720, 138, 232, 16}, modes, draw.GREY, .Right, 2)
+	draw.text_in(cv, f, {260, 134, 400, 24}, shown, draw.WHITE, .Center, 3)
+	modes := fmt.tprintf("%s %s", kit.modes_current(p.encoders), kit.modes_current(p.pads))
+	if kit.modes_current(p.pads) == "note" do modes = fmt.tprintf("%s %d", modes, p.keyboard.octave)
+	draw.text_in(cv, f, {660, 134, 292, 24}, modes, 0xc0c0c0, .Right, 3)
 }

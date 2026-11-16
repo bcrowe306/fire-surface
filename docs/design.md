@@ -422,7 +422,8 @@ Pads), documented, and pushed.
 
 In this order, once the SDK above is finished.
 
-1. **USB and HID in Pads.** The protocol already has devices
+1. **USB and HID in Pads** (built: Pads' `app/devices`, libusb and SDL3's
+   hidapi; the Push 2 example tried on the device). The protocol already has devices
    (`device_write`, `on_device_read`); what waits is the host's backend.
    Surfaces see the same calls on every platform; only the host's side
    changes:

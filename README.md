@@ -46,7 +46,7 @@ tools/fsurf          the command-line tool: scan, info, run a surface from a scr
 surface/             the Odin kit, compiled into a surface
 draw/                the draw kit: canvases, shapes, text, widgets, display formats
 testing/             a headless host for a surface's tests, with a fake fsurf.daw
-examples/            hello_c, hello_odin (the protocol by hand); grid_odin, keys_odin, screen_odin (the kit)
+examples/            hello_c, hello_odin (the protocol by hand); grid_odin, keys_odin, screen_odin, push2_odin (Ableton Push 2) (the kit)
 tests/host           the host library with the examples and linked-in test surfaces; Odin vs the header's layout
 tests/kit            the kit, its helpers, fsurf.daw, displays, and the kit examples through the test host
 tests/draw           the draw kit

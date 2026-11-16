@@ -102,7 +102,9 @@ changed:
 - or `send` of your own
 
 It mirrors the display either way. When a device opens again, everything
-is sent.
+is sent. With `resend`, a frame is sent each time the host asks (at the
+display's rate), changed or not, for a device that wants a steady stream:
+Push 2 turns its display off without frames.
 
 A text display sends only the lines that changed, each through
 `text_line`, and mirrors as rendered text. `place_display` puts a display
@@ -113,6 +115,19 @@ displays:
 - a colour one over USB: the selected track in its colour, its device,
   and four parameters as knobs
 - a 16x2 LCD over SysEx
+
+[`examples/push2_odin`](../examples/push2_odin/push2.odin) is a surface
+for Ableton Push 2, tried on the device, from Ableton's published
+interface ([push-interface](https://github.com/Ableton/push-interface)):
+- its 960 x 160 display over USB (`display_send_push2`, `resend`): the
+  ring's eight tracks with their names and volumes, or the selected
+  device's parameters, and the transport
+- on its User Port: its own colour palette, the display's backlight and
+  User mode in its hello, Live mode in its goodbye
+- its pads (a keyboard in the host's scale, drum pads, the session's
+  clips), encoders (volumes, pans, a device's parameters, the tempo) and
+  buttons; every other control is its own, so none reaches the host as a
+  note
 
 In tests, the test host's devices are fakes:
 - `written` gives what was written to each.

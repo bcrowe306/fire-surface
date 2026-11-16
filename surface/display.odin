@@ -52,6 +52,10 @@ Display :: struct {
 	text_line: proc(d: ^Display, row: int, text: string, out: ^[dynamic]u8), // Text: a line's message
 	prefix:    []u8, // sent before each frame's pixels (a header; not copied: keep it alive)
 	chunk:     int, // the most bytes a write (0: a frame a write)
+	// Sent each time the host asks (at the display's rate), changed or not:
+	// for a device that wants a steady stream (Push 2 turns its display off
+	// without frames).
+	resend:    bool,
 	user:      rawptr,
 	// State.
 	invalid:   bool,
@@ -137,7 +141,7 @@ c_on_display_frame :: proc "c" (s: ^abi.Surface, index: u32) {
 	} else {
 		if d.invalid && d.draw != nil do d.draw(d, &d.canvas)
 		d.invalid = false
-		if d.canvas.dirty.w > 0 || d.full {
+		if d.canvas.dirty.w > 0 || d.full || d.resend {
 			if d.full do draw.dirty_all(&d.canvas)
 			ok := d.send(d) if d.send != nil else display_send(d)
 			d.frames += 1 if ok else 0
