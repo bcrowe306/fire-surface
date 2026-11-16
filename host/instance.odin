@@ -39,8 +39,10 @@ Host_Config :: struct {
 	on_reload:     proc(user: rawptr, l: ^Library, ok: bool),
 	// Devices other than MIDI (a descriptor's devices: USB, HID). Open one
 	// for a surface being activated (true if it did), write to it, close it
-	// after the surface is deactivated. nil: none opened. Their reads come
-	// back with `instance_device_read`, on the surface thread.
+	// after the surface is deactivated (each one opened, whatever
+	// device_open returned). nil: none opened. Their reads come back with
+	// `instance_device_read`, and one that wasn't there and came (or went
+	// away) with `instance_device_state`, on the surface thread.
 	device_open:   proc(user: rawptr, s: ^Instance, device: u32, spec: ^abi.Device_Spec) -> bool,
 	device_write:  proc(user: rawptr, s: ^Instance, device: u32, bytes: []u8) -> bool,
 	device_close:  proc(user: rawptr, s: ^Instance, device: u32),
@@ -630,7 +632,9 @@ devices_open :: proc(s: ^Instance) {
 
 @(private)
 devices_close :: proc(s: ^Instance) {
-	for open, i in s.devices do if open && s.host.config.device_close != nil do s.host.config.device_close(s.host.config.user, s, u32(i))
+	// Each device_open is closed, whatever it returned: an app may keep
+	// trying to reach a device that wasn't there.
+	for _, i in s.devices do if s.host.config.device_close != nil do s.host.config.device_close(s.host.config.user, s, u32(i))
 	clear(&s.devices)
 }
 

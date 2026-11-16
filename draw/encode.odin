@@ -71,7 +71,7 @@ lit :: proc(c: u32) -> bool {
 // of 960 BGR565 pixels and 128 bytes of filler (2048 bytes a line), each
 // 4 bytes XORed with E7 F3 E7 FF; it is sent to the display's bulk endpoint
 // (0x01) after the header, in 16 KiB transfers. As Ableton documents it
-// (github.com/Ableton/push-interface); not tried on a device here.
+// (github.com/Ableton/push-interface); tried on a Push 2.
 PUSH2_WIDTH :: 960
 // (See PUSH2_WIDTH.)
 PUSH2_HEIGHT :: 160

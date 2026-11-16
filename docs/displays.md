@@ -45,7 +45,9 @@ can show it without the device.
 The app does the actual USB and HID work through its `Host_Config`:
 - `device_open(s, device, spec)` when a surface is activated
 - `device_write` for the surface's writes
-- `device_close` after it is deactivated
+- `device_close` after it is deactivated (each device `device_open` was
+  called for, whatever it returned: an app may keep trying to reach one
+  that wasn't there)
 
 It reports reads with `instance_device_read`, on the surface thread, and
 a device unplugged or back with `instance_device_state`.

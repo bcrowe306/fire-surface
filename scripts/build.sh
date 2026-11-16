@@ -41,5 +41,6 @@ odin build examples/hello_odin -build-mode:dll -vet -strict-style -out:"$OUT/hel
 odin build examples/grid_odin -build-mode:dll -vet -strict-style -out:"$OUT/grid_odin.fsurf"
 odin build examples/keys_odin -build-mode:dll -vet -strict-style -out:"$OUT/keys_odin.fsurf"
 odin build examples/screen_odin -build-mode:dll -vet -strict-style -out:"$OUT/screen_odin.fsurf"
+odin build examples/push2_odin -build-mode:dll -vet -strict-style -out:"$OUT/push2_odin.fsurf"
 odin build tools/fsurf -vet -strict-style -out:"$OUT/fsurf$EXE"
 echo "built $OUT"
