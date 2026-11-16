@@ -144,19 +144,19 @@ invalidate :: proc(cs: ^kit.Control_Surface) {
 draw_main :: proc(d: ^kit.Display, cv: ^draw.Canvas) {
 	cs := d.cs
 	s := (^Screen)(cs.user)
-	f := &draw.FONT_5X7
+	sans := draw.open_sans()
 	draw.clear(cv, 0x0c0e12)
 	if cs.daw == nil {
-		draw.text_in(cv, f, {0, 0, cv.width, cv.height}, "No host DAW", draw.GREY, .Center)
+		draw.type_text_in(cv, sans, 12, {0, 0, cv.width, cv.height}, "No host DAW", draw.GREY, .Center)
 		return
 	}
 	// The track, in its colour; the device; playing.
 	t := kit.selected_track(cs)
 	colour := u32(kit.daw_get(cs, .Track_Color, t))
 	draw.fill_rect(cv, {0, 0, cv.width, 11}, draw.mix(0x0c0e12, colour, 110))
-	draw.text_in(cv, f, {3, 0, 120, 11}, kit.daw_text(cs, .Track_Name, t), draw.WHITE)
-	draw.text_in(cv, f, {120, 0, cv.width - 134, 11}, kit.daw_text(cs, .Device_Name, s.device.device), draw.GREY, .Right)
-	draw.fill_circle(cv, cv.width - 6, 5, 3, draw.GREEN if kit.daw_flag(cs, .Playing) else draw.DARK_GREY)
+	draw.type_text_in(cv, sans, 11, {3, 0, 120, 11}, kit.daw_text(cs, .Track_Name, t), draw.WHITE)
+	draw.type_text_in(cv, sans, 11, {120, 0, cv.width - 134, 11}, kit.daw_text(cs, .Device_Name, s.device.device), draw.GREY, .Right)
+	draw.aa_circle(cv, f32(cv.width) - 6, 5.5, 3, draw.GREEN if kit.daw_flag(cs, .Playing) else draw.DARK_GREY)
 	// The bank's four parameters.
 	n := int(kit.daw_get(cs, .Param_Count))
 	for i in 0 ..< 4 {
@@ -164,8 +164,8 @@ draw_main :: proc(d: ^kit.Display, cv: ^draw.Canvas) {
 		x := i * 64
 		if p >= n do continue
 		v := f32(kit.daw_get(cs, .Param_Value, p))
-		draw.knob(cv, x + 32, 30, 12, v, draw.ORANGE)
-		draw.text_in(cv, f, {x, 45, 64, 9}, kit.daw_text(cs, .Param_Name, p), draw.GREY, .Center)
-		draw.text_in(cv, f, {x, 54, 64, 9}, kit.daw_text(cs, .Param_Value, p), draw.WHITE, .Center)
+		draw.aa_knob(cv, f32(x) + 32, 29, 12, v, draw.ORANGE, width = 3)
+		draw.type_text_in(cv, sans, 10, {x, 44, 64, 10}, kit.daw_text(cs, .Param_Name, p), draw.GREY, .Center)
+		draw.type_text_in(cv, sans, 10, {x, 54, 64, 10}, kit.daw_text(cs, .Param_Value, p), draw.WHITE, .Center)
 	}
 }

@@ -432,13 +432,14 @@ invalidate :: proc(cs: ^kit.Control_Surface) {
 
 // The display: a column a track, and a line at the bottom.
 draw_screen :: proc(d: ^kit.Display, cv: ^draw.Canvas) {
-	// (Bold: the display is small, and dim on USB power alone.)
+	// (Open Sans and smooth shapes: the display is small, and dim on USB
+	// power alone.)
 	cs := d.cs
 	p := (^Push2)(cs.user)
-	f := &draw.FONT_5X7
+	sans, semi := draw.open_sans(), draw.open_sans(.Semibold)
 	draw.clear(cv, 0x000000)
 	if cs.daw == nil {
-		draw.text_in(cv, f, {0, 0, cv.width, cv.height}, "No host DAW", draw.WHITE, .Center, 4)
+		draw.type_text_in(cv, sans, 28, {0, 0, cv.width, cv.height}, "No host DAW", draw.WHITE, .Center)
 		return
 	}
 	device_mode := kit.modes_current(p.encoders) == "device"
@@ -446,14 +447,15 @@ draw_screen :: proc(d: ^kit.Display, cv: ^draw.Canvas) {
 	n_params := int(kit.daw_get(cs, .Param_Count))
 	for i in 0 ..< 8 {
 		x := i * COL
+		fx := f32(x)
 		if device_mode {
-			// The selected device's parameter.
+			// The selected device's parameter: its name, a knob, its value.
 			k := p.device.bank * 8 + i
 			if k >= n_params do continue
 			v := f32(kit.daw_get(cs, .Param_Value, k))
-			draw.text_in(cv, f, {x + 2, 4, COL - 4, 24}, kit.daw_text(cs, .Param_Name, k), draw.WHITE, .Center, 2)
-			draw.knob(cv, x + COL / 2, 68, 32, v, draw.ORANGE, track = 0x404040, thickness = 7)
-			draw.text_in(cv, f, {x + 2, 104, COL - 4, 24}, kit.daw_text(cs, .Param_Value, k), draw.WHITE, .Center, 3)
+			draw.type_text_in(cv, sans, 17, {x + 4, 4, COL - 8, 24}, kit.daw_text(cs, .Param_Name, k), 0xC8C8D0, .Center)
+			draw.aa_knob(cv, fx + COL / 2, 70, 30, v, 0xFFB030, 0x34343C, 6)
+			draw.type_text_in(cv, semi, 18, {x + 4, 104, COL - 8, 24}, kit.daw_text(cs, .Param_Value, k), draw.WHITE, .Center)
 			continue
 		}
 		t, ok := kit.mixer_strip_track(p.volumes, i)
@@ -461,29 +463,28 @@ draw_screen :: proc(d: ^kit.Display, cv: ^draw.Canvas) {
 		colour := u32(kit.daw_get(cs, .Track_Color, t))
 		if colour == 0 do colour = 0x5080ff
 		sel := t == kit.selected_track(cs)
-		// Its name on its colour (the selected one bright).
-		draw.fill_rect(cv, {x + 3, 0, COL - 6, 30}, colour if sel else draw.mix(0x000000, colour, 150))
-		draw.text_in(cv, f, {x + 5, 2, COL - 10, 26}, kit.daw_text(cs, .Track_Name, t), draw.WHITE, .Center, 3)
-		// Its volume: a wide bar, and in dB.
-		vol := f32(kit.daw_get(cs, .Track_Volume, t))
-		h := int(64 * clamp(vol, 0, 1))
-		draw.fill_rect(cv, {x + COL / 2 - 22, 38, 44, 64}, 0x303030)
-		draw.fill_rect(cv, {x + COL / 2 - 22, 38 + 64 - h, 44, h}, colour) // (filling up)
-		draw.text_in(cv, f, {x + 2, 106, COL - 4, 22}, kit.daw_text(cs, .Track_Volume, t), draw.WHITE, .Center, 2)
-		if kit.daw_flag(cs, .Track_Mute, t) do draw.text_in(cv, f, {x + 6, 40, 24, 24}, "M", draw.ORANGE, .Left, 3)
+		// Its name over a band of its colour (the selected one bright).
+		draw.aa_round_rect(cv, fx + 4, 3, COL - 8, 28, 6, colour if sel else draw.mix(0x000000, colour, 120))
+		draw.type_text_in(cv, semi, 18, {x + 8, 3, COL - 16, 28}, kit.daw_text(cs, .Track_Name, t), draw.WHITE, .Center)
+		// Its volume: a bar filling up, and in dB.
+		vol := clamp(f32(kit.daw_get(cs, .Track_Volume, t)), 0, 1)
+		bx := fx + COL / 2 - 14
+		draw.aa_round_rect(cv, bx, 38, 28, 64, 5, 0x26262C)
+		if vol > 0.01 do draw.aa_round_rect(cv, bx, 38 + 64 * (1 - vol), 28, 64 * vol, 5, colour)
+		draw.type_text_in(cv, sans, 16, {x + 2, 104, COL - 4, 24}, kit.daw_text(cs, .Track_Volume, t), 0xE0E0E6, .Center)
+		if kit.daw_flag(cs, .Track_Mute, t) do draw.type_text_in(cv, semi, 16, {x + 8, 40, 26, 22}, "M", 0xFF9020, .Left)
 	}
 	// The bottom line: the transport, the selected track and device, the modes.
-	draw.fill_rect(cv, {0, 132, cv.width, 28}, 0x202020)
+	draw.fill_rect(cv, {0, 132, cv.width, 28}, 0x18181C)
 	playing := kit.daw_flag(cs, .Playing)
-	draw.fill_circle(cv, 16, 146, 9, draw.GREEN if playing else 0x606060)
-	if kit.daw_flag(cs, .Recording) do draw.fill_circle(cv, 40, 146, 9, draw.RED)
-	tempo := fmt.tprintf("%.1f BPM", kit.daw_get(cs, .Tempo))
-	draw.text(cv, f, 60, 136, tempo, draw.WHITE, 3)
+	draw.aa_circle(cv, 16, 146, 7, 0x30E040 if playing else 0x505058)
+	if kit.daw_flag(cs, .Recording) do draw.aa_circle(cv, 36, 146, 7, 0xFF3030)
+	draw.type_text_in(cv, semi, 17, {52, 132, 160, 28}, fmt.tprintf("%.1f BPM", kit.daw_get(cs, .Tempo)), draw.WHITE)
 	t := kit.selected_track(cs)
 	shown := kit.daw_text(cs, .Track_Name, t)
-	if device_mode do shown = fmt.tprintf("%s / %s", shown, kit.daw_text(cs, .Device_Name, p.device.device))
-	draw.text_in(cv, f, {260, 134, 400, 24}, shown, draw.WHITE, .Center, 3)
-	modes := fmt.tprintf("%s %s", kit.modes_current(p.encoders), kit.modes_current(p.pads))
-	if kit.modes_current(p.pads) == "note" do modes = fmt.tprintf("%s %d", modes, p.keyboard.octave)
-	draw.text_in(cv, f, {660, 134, 292, 24}, modes, 0xc0c0c0, .Right, 3)
+	if device_mode do shown = fmt.tprintf("%s  ›  %s", shown, kit.daw_text(cs, .Device_Name, p.device.device))
+	draw.type_text_in(cv, sans, 17, {260, 132, 400, 28}, shown, draw.WHITE, .Center)
+	modes := fmt.tprintf("%s · %s", kit.modes_current(p.encoders), kit.modes_current(p.pads))
+	if kit.modes_current(p.pads) == "note" do modes = fmt.tprintf("%s · octave %d", modes, p.keyboard.octave)
+	draw.type_text_in(cv, sans, 16, {660, 132, 290, 28}, modes, 0xA0A0A8, .Right)
 }

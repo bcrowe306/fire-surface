@@ -67,11 +67,21 @@ what changed (`Canvas.dirty`), so a frame sends only when something did.
 | | |
 |---|---|
 | Shapes | `clear`, `fill_rect`, `rect`, `fill_round_rect`, `line`, `hline`, `vline`, `circle`, `fill_circle`, `arc` (smooth edges), `blit` (images with alpha), `mix`, a clip rectangle |
-| Text | `FONT_5X7` (bundled: printable ASCII), `text`, `text_width`, `text_in` (aligned and cut to a rectangle), any scale |
+| Smooth shapes | paths (`path_move`, `path_line`, `path_quad`, `path_cubic`, `path_arc`, `fill_path`) and shapes made with them: `aa_line`, `aa_polyline`, `aa_fill_under` (a plot's area), `aa_circle`, `aa_ring`, `aa_arc`, `aa_round_rect`, `aa_round_rect_outline`, `aa_knob`; anti-aliased by exact coverage, any position (f32, sub-pixel) |
+| Text | TrueType: `open_sans()` (bundled, Regular or Semibold, SIL OFL), `typeface_load` (any .ttf), `type_text`, `type_width`, `type_text_in` (aligned, cut to a rectangle with "…"), at any size in pixels; and the bitmap `FONT_5X7` (`text`, `text_in`), for 1-bit displays |
 | Widgets | `meter` (green, yellow, red, a peak), `knob` (a 270° ring, or from the middle for pan), `param_label`, `bar`, `waveform` |
 | Formats | `encode` (RGB565, BGR565, RGB888, 1-bit rows, 1-bit pages; the whole canvas or a region), `encode_push2` (Push 2's header, masked lines and padding), `rgba`, `png` |
 
 ![The screen example's display, drawn by the draw kit](screen_main.png)
+
+![Open Sans at sizes 11 to 40, Semibold, rounded rectangles, knobs, a plot and lines](draw_aa.png)
+
+The smooth shapes and the fonts share one rasterizer, in pure Odin (each
+pixel's coverage accumulated a row at a time, as in font-rs and
+stb_truetype's second rasterizer): no C library, so a surface builds with
+`odin build` alone on any platform. A typeface's glyphs are drawn once for
+each size and quarter-pixel offset, and kept. TrueType outlines (`glyf`,
+not CFF); no hinting or kerning.
 
 ## In the kit
 
@@ -137,9 +147,7 @@ In tests, the test host's devices are fakes:
 
 ## Not yet
 
-- Anti-aliased fonts (TrueType): the bundled font is a bitmap.
 - Partial frames for devices that take regions: `encode` takes a region,
   but the kit's default send sends whole frames.
-- A libusb or hidapi backend in the host library: it comes with Pads,
-  with the Windows WinUSB, macOS permission and Linux udev questions from
-  the design.
+- A libusb or hidapi backend in the host library itself: Pads has its
+  own (`app/devices`, libusb and SDL3's hidapi).

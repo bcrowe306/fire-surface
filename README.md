@@ -23,7 +23,7 @@ Status: the seven stages of [the design](docs/design.md) are built, and Pads ([f
 - the Odin kit (controls, layers and owner stacks, components, modes,
   skins, tasks, the claim table worked out from owners, displays, helpers)
   with a test host
-- the draw kit (a canvas, shapes, a bitmap font, widgets, display formats
+- the draw kit (a canvas, smooth shapes, TrueType text with Open Sans bundled, a bitmap font, widgets, display formats
   including Push 2's, PNG)
 - the standard extension `fsurf.daw`, its kit components, and a fake DAW
   for tests
@@ -57,4 +57,5 @@ tests/draw           the draw kit
 ./scripts/test.sh    # build, then the tests
 ```
 
-MIT licence.
+MIT licence. The bundled Open Sans (`draw/fonts`) is under the SIL Open
+Font License (`draw/fonts/OFL.txt`).
