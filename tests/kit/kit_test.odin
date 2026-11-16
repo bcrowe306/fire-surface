@@ -4,10 +4,12 @@
 package kit_test
 
 import "core:fmt"
+import "core:log"
 import "core:strings"
 import "core:testing"
 
 import abi "../../abi"
+import host "../../host"
 import kit "../../surface"
 import fst "../../testing"
 
@@ -198,7 +200,23 @@ rules_spec := kit.Spec{
 	},
 }
 
-test_library := kit.Library{specs = {&owners_spec, &pass_spec, &controls_spec, &modes_spec, &tasks_spec, &rules_spec}}
+log_spec := kit.Spec{
+	id = "t.log", name = "log", ports = ports_main,
+	setup = proc(cs: ^kit.Control_Surface) -> bool {
+		c := kit.component_make(cs, "c")
+		kit.layer_bind(c.layer, "l", kit.button(cs, "L", kit.bind_cc(60)))
+		c.on_event = proc(c: ^kit.Component, e: kit.Event) {
+			if e.kind != .Press do return
+			log.debug("pressed")
+			log.warn("careful")
+		}
+		kit.surface_add(cs, c)
+		log.infof("set up with %d control", 1)
+		return true
+	},
+}
+
+test_library := kit.Library{specs = {&owners_spec, &pass_spec, &controls_spec, &modes_spec, &tasks_spec, &rules_spec, &log_spec}}
 
 test_entry := abi.Entry{
 	fsurf_version = abi.VERSION,
@@ -478,4 +496,62 @@ neighbouring_controls_share_a_rule :: proc(t: ^testing.T) {
 	fst.kit_surface(&th).rules_dirty = true
 	fst.midi_in(&th, cc(1, 1))
 	testing.expect(t, raw_data(th.s.rules) == raw_data(rules_before))
+}
+
+// ── The log ───────────────────────────────────────────────────────────
+
+@(test)
+core_log_reaches_the_hosts_log :: proc(t: ^testing.T) {
+	th: fst.Test_Host
+	if !start(t, &th, "t.log") do return
+	defer fst.stop(&th)
+	es := host.log_entries(&th.h)
+	if !testing.expect_value(t, len(es), 1) do return
+	testing.expect_value(t, es[0].message, "set up with 1 control")
+	testing.expect_value(t, es[0].level, abi.Log_Level.Info)
+	testing.expect_value(t, es[0].source, host.Log_Source.Surface)
+	testing.expect_value(t, es[0].uid, th.s.uid)
+	testing.expect_value(t, es[0].surface, "log")
+	// Debug lines dropped, by default; a repeat counted on its line.
+	for _ in 0 ..< 3 {
+		fst.midi_in(&th, {0xB0, 60, 127})
+		fst.midi_in(&th, {0xB0, 60, 0})
+	}
+	es = host.log_entries(&th.h)
+	testing.expect_value(t, len(es), 2)
+	testing.expect_value(t, es[1].message, "careful")
+	testing.expect_value(t, es[1].level, abi.Log_Level.Warning)
+	testing.expect_value(t, es[1].count, 3)
+	testing.expect(t, strings.contains(host.log_line(es[1]), "warning  log  careful (x3)"), host.log_line(es[1]))
+	// The app is told each line, debug ones too.
+	testing.expect_value(t, len(th.logged), 7)
+	host.log_set_debug(&th.h, true)
+	fst.midi_in(&th, {0xB0, 60, 127})
+	fst.midi_in(&th, {0xB0, 60, 0})
+	es = host.log_entries(&th.h)
+	testing.expect_value(t, es[len(es) - 2].message, "pressed")
+	testing.expect_value(t, es[len(es) - 1].count, 1) // not "careful" after "careful": a new line
+	host.log_clear(&th.h)
+	testing.expect_value(t, len(host.log_entries(&th.h)), 0)
+}
+
+@(test)
+a_surface_logging_a_lot_keeps_to_its_share :: proc(t: ^testing.T) {
+	th: fst.Test_Host
+	if !start(t, &th, "t.log") do return
+	defer fst.stop(&th)
+	host.log_add(&th.h, nil, .Error, "the host's own")
+	cs := fst.kit_surface(&th)
+	for i in 0 ..< host.LOG_PER_SURFACE + 100 do kit.log(cs, fmt.tprintf("line %d", i))
+	es := host.log_entries(&th.h)
+	mine := 0
+	for e in es do if e.uid == th.s.uid do mine += 1
+	testing.expect_value(t, mine, host.LOG_PER_SURFACE)
+	testing.expect_value(t, es[len(es) - 1].message, fmt.tprintf("line %d", host.LOG_PER_SURFACE + 99))
+	found := false
+	for e in es do if e.message == "the host's own" {
+		found = e.source == .Host && e.uid == 0
+		testing.expect(t, strings.contains(host.log_line(e), "error    host  the host's own"), host.log_line(e))
+	}
+	testing.expect(t, found, "the host's line is kept")
 }

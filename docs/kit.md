@@ -202,6 +202,24 @@ The kit's tasks run on one host timer:
 A task with an owner ends when its owner is deactivated, and every task
 ends when the surface is.
 
+## Logging
+
+`core:log` writes to the host's log: in each call from the host, the kit
+sets `context.logger` to one that hands lines on (`kit.logger(cs)`).
+`kit.log(cs, text, level)` does the same without `core:log`.
+
+```odin
+import "core:log"
+
+c.on_event = proc(c: ^kit.Component, e: kit.Event) {
+	log.debugf("%s %v", e.slot, e.kind) // kept when the host keeps debug lines
+	log.infof("bank %d", bank)
+}
+```
+
+Fatal is written as an error. The host keeps the lines (its log,
+[tools.md](tools.md)); in tests, `host.log_entries(&th.h)` has them.
+
 ## Helpers
 
 - **MIDI:**

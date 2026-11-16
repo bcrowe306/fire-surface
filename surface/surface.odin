@@ -377,8 +377,29 @@ enter :: proc "contextless" (cs: ^Control_Surface) -> runtime.Context {
 	c := context
 	c.allocator = cs.allocator
 	c.temp_allocator = virtual.arena_allocator(&cs.temp)
+	c.logger = logger(cs)
 	cs.depth += 1
 	return c
+}
+
+// A `runtime.Logger` that writes to the host's log: the context's in each
+// call from the host, so `core:log` reaches it (`log.infof("bank %d", n)`).
+// Fatal is written as an error.
+logger :: proc "contextless" (cs: ^Control_Surface) -> runtime.Logger {
+	return {procedure = logger_proc, data = cs, lowest_level = .Debug}
+}
+
+@(private)
+logger_proc :: proc(data: rawptr, level: runtime.Logger_Level, text: string, options: runtime.Logger_Options, location := #caller_location) {
+	cs := (^Control_Surface)(data)
+	l: abi.Log_Level
+	switch {
+	case level < .Info:    l = .Debug
+	case level < .Warning: l = .Info
+	case level < .Error:   l = .Warning
+	case:                  l = .Error
+	}
+	log(cs, text, l)
 }
 
 @(private)
@@ -551,7 +572,8 @@ notify :: proc(cs: ^Control_Surface, text: string) {
 	cs.host.notify(cs.host, strings.clone_to_cstring(text, context.temp_allocator))
 }
 
-// A line in the host's log.
+// A line in the host's log. (`core:log` reaches it too: the kit sets
+// `context.logger` in each call from the host.)
 log :: proc(cs: ^Control_Surface, text: string, level := abi.Log_Level.Info) {
 	cs.host.log(cs.host, level, strings.clone_to_cstring(text, context.temp_allocator))
 }

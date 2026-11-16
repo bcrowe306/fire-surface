@@ -16,6 +16,8 @@ Host_Config :: struct {
 	send_midi:     proc(user: rawptr, s: ^Instance, port: u32, bytes: []u8) -> bool,
 	// An extension of the app by id and version: its table, or nil.
 	get_extension: proc(user: rawptr, s: ^Instance, id: string, version: u32) -> rawptr,
+	// Each line a surface logs, and the host's about one (s: nil for none),
+	// debug ones too, whether the log keeps them or not (log.odin).
 	log:           proc(user: rawptr, s: ^Instance, level: abi.Log_Level, message: string),
 	notify:        proc(user: rawptr, s: ^Instance, text: string),
 	// The clock on_midi's times are on; nil = the time since `host_init`.
@@ -64,6 +66,7 @@ Host :: struct {
 	outputs:    [dynamic]Port_Info,
 	disabled:   [dynamic]string, // surface ids not detected
 	monitor:    Monitor,
+	log:        Log,
 }
 
 @(private)
@@ -134,6 +137,7 @@ host_init :: proc(h: ^Host, config: Host_Config, allocator := context.allocator)
 	h.disabled = make([dynamic]string, allocator)
 	router_init(&h.router, allocator)
 	monitor_init(&h.monitor, allocator)
+	log_init(&h.log, allocator)
 	for s, i in ([4]string{config.name, config.vendor, config.url, config.version}) do h.strings[i] = strings.clone_to_cstring(s, allocator)
 }
 
@@ -145,6 +149,7 @@ host_destroy :: proc(h: ^Host) {
 	for len(h.instances) > 0 do instance_destroy(h.instances[len(h.instances) - 1])
 	router_destroy(&h.router, h.allocator)
 	monitor_destroy(&h.monitor, h.allocator)
+	log_destroy(&h.log)
 	delete(h.instances)
 	delete(h.timers)
 	for s in h.strings do delete(s, h.allocator)
@@ -426,7 +431,7 @@ c_get_extension :: proc "c" (h: ^abi.Host, id: cstring, version: u32) -> rawptr 
 c_log :: proc "c" (h: ^abi.Host, level: abi.Log_Level, message: cstring) {
 	s := from(h)
 	context = s.host.ctx
-	if s.host.config.log != nil && message != nil do s.host.config.log(s.host.config.user, s, level, string(message))
+	if message != nil do log_add(s.host, s, level, string(message), .Surface)
 }
 
 @(private)
@@ -615,8 +620,8 @@ devices_open :: proc(s: ^Instance) {
 		spec := &d.devices[i]
 		ok := s.host.config.device_open != nil && s.host.config.device_open(s.host.config.user, s, u32(i), spec)
 		append(&s.devices, ok)
-		if !ok && .Optional not_in spec.flags && s.host.config.log != nil {
-			s.host.config.log(s.host.config.user, s, .Warning, fmt.tprintf("%s: its device %q (%04X:%04X) isn't open", d.name, spec.role, spec.vendor_id, spec.product_id))
+		if !ok && .Optional not_in spec.flags {
+			log_add(s.host, s, .Warning, fmt.tprintf("its device %q (%04X:%04X) isn't open", spec.role, spec.vendor_id, spec.product_id))
 		}
 		if ok && s.surface.on_device != nil do s.surface.on_device(s.surface, u32(i), true)
 	}

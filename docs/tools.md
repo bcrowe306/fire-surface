@@ -4,6 +4,7 @@ What a surface's author works with, besides the test host
 ([kit.md](kit.md)):
 - hot reload
 - the MIDI monitor
+- the log
 - the virtual controller
 - the `fsurf` command-line tool
 
@@ -81,6 +82,34 @@ inj 1  99 24 64  Grid (kit example) / Pads 3,0 (Note Repeat)
 
 It keeps `MONITOR_CAPACITY` entries, dropping the oldest. What `route`
 records beyond that between updates is counted in `monitor_lost`.
+
+## The log
+
+Each line a surface logs (`log` in fsurf.h; in the kit, `kit.log` or
+`core:log`) and each the host writes about one (a device that didn't
+open, a library that didn't reload) is kept in the host's log, with its
+time, level and surface. Each entry (`log_entries`) gives:
+- its time (the host's clock, as the monitor's, so the two interleave)
+- its level and where it came from (the surface, or the host)
+- the surface, by uid and by name
+- its text, and how many times it came in a row
+
+`log_line` turns an entry into text:
+
+```
+12.345  info     Grid (kit example)  mode: mixer
+12.400  warning  host: Grid (kit example)  its device "display" (2982:1967) isn't open
+12.500  warning  Grid (kit example)  careful (x3)
+```
+
+- **Debug lines** are dropped unless `log_set_debug(&h, true)`, so a
+  surface can leave its debug calls in. `Host_Config.log` still gets
+  every line, debug ones too.
+- **Bounded:** `LOG_PER_SURFACE` lines a surface (its oldest go first, so
+  one that logs every message doesn't push out the others) and
+  `LOG_CAPACITY` in all.
+- **Repeats:** a line the same as its surface's last is counted on it.
+- The app writes its own lines about surfaces with `log_add`.
 
 ## Hot reload
 

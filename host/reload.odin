@@ -129,7 +129,7 @@ library_reload :: proc(h: ^Host, l: ^Library) -> bool {
 	fresh, err := load_copy(w, h.allocator)
 	if err != .None {
 		msg := fmt.tprintf("%s: the new build didn't load (%v); the old one goes on", w.original, err)
-		if h.config.log != nil do h.config.log(h.config.user, nil, .Error, msg)
+		log_add(h, nil, .Error, msg)
 		if h.config.on_reload != nil do h.config.on_reload(h.config.user, l, false)
 		return false
 	}
@@ -180,7 +180,7 @@ library_reload :: proc(h: ^Host, l: ^Library) -> bool {
 	for sv in saved {
 		s := sv.s
 		if !instance_attach(s, sv.id) {
-			if h.config.log != nil do h.config.log(h.config.user, s, .Error, fmt.tprintf("%s: %s is gone or didn't start after the reload", w.original, sv.id))
+			log_add(h, s, .Error, fmt.tprintf("%s: %s is gone or didn't start after the reload", w.original, sv.id))
 			instance_destroy_detached(s)
 			continue
 		}
@@ -198,7 +198,7 @@ library_reload :: proc(h: ^Host, l: ^Library) -> bool {
 		}
 	}
 	rematch(h)
-	if h.config.log != nil do h.config.log(h.config.user, nil, .Info, fmt.tprintf("%s: reloaded", w.original))
+	log_add(h, nil, .Info, fmt.tprintf("%s: reloaded", w.original))
 	if h.config.on_reload != nil do h.config.on_reload(h.config.user, l, true)
 	return true
 }

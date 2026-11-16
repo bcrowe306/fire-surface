@@ -57,7 +57,7 @@ create(host, id) → init → [identify] → activate(ports) ⇄ deactivate → 
 | Function | |
 |---|---|
 | `get_extension(id, version)` | an extension's function table (`fsurf.daw`, `fire.pads`), or NULL |
-| `log(level, message)` | a line in the host's log |
+| `log(level, message)` | a line in the host's log (debug, info, warning, error): its tools show it |
 | `notify(text)` | a short message for the user |
 | `send_midi(port, bytes, size)` | MIDI to the device, on one of its own output ports |
 | `timer_start(ms)`, `timer_stop(id)` | a repeating timer: `on_timer(id)` |
