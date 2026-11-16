@@ -20,6 +20,9 @@ push2_starts_in_user_mode_and_streams_its_display :: proc(t: ^testing.T) {
 	// Its hello: the backlight on, and User mode last.
 	testing.expect(t, fst.sent_has(&th, {0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x08, 0x7F, 0x01, 0xF7}))
 	testing.expect(t, fst.sent_has(&th, {0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x0A, 0x01, 0xF7}))
+	testing.expect(t, fst.sent_has(&th, {0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x17, 0x68, 0xF7})) // the touch strip's default
+	// The selected track's colour (the fake's track 1: 0xFF0000) in palette entry 26.
+	testing.expect(t, fst.sent_has(&th, {0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x03, 26, 0x7F, 1, 0, 0, 0, 0, 64, 0, 0xF7}))
 	// Frames at 30 a second, whole (header and 20 writes of 16 KiB), changed or not.
 	fst.advance(&th, 40)
 	_ = os.write_entire_file(".build/push2_main.png", fst.display_png(&th, 0)) // to look at
@@ -42,4 +45,11 @@ push2_starts_in_user_mode_and_streams_its_display :: proc(t: ^testing.T) {
 	before := th.daw.tracks[0].volume
 	for _ in 0 ..< 10 do fst.midi_in(&th, {0xB0, 71, 0x7F})
 	testing.expectf(t, th.daw.tracks[0].volume < before, "%v -> %v", before, th.daw.tracks[0].volume)
+	// Session: the top scene button launches the first scene in view.
+	fst.midi_in(&th, {0xB0, 51, 127})
+	fst.midi_in(&th, {0xB0, 51, 0})
+	fst.midi_in(&th, {0xB0, 43, 127})
+	launched := false
+	for a in th.daw.actions do if a == "launch_scene 0 0" do launched = true
+	testing.expect(t, launched, "launch_scene 0")
 }

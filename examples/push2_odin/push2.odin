@@ -27,6 +27,7 @@ Ableton's published interface (github.com/Ableton/push-interface).
 */
 package push2_odin
 
+import "base:runtime"
 import "core:fmt"
 import "core:log"
 
@@ -71,19 +72,25 @@ NOTE_TOUCH :: 0 // 0-7 the track encoders', 8 master, 9 swing, 10 tempo
 NOTE_STRIP_TOUCH :: 12
 
 // Colour indices of the RGB LEDs: the palette the surface sets (hello).
+// 1-24: hues, for clips (the launcher picks the nearest); 25 and 26: the
+// selected track's colour, dim and full (set again when it changes); 100
+// on: the surface's own.
 OFF :: 0
-DIM_WHITE :: 1
-ORANGE :: 2
-DIM_ORANGE :: 3
-GREEN :: 4
-DIM_GREEN :: 5
-RED :: 6
-DIM_RED :: 7
-BLUE :: 8
-DIM_BLUE :: 9
-YELLOW :: 10
-PURPLE :: 11
-WHITE :: 13
+HUES :: 24 // 1-24
+TRACK_DIM :: 25
+TRACK :: 26
+DIM_WHITE :: 100
+ORANGE :: 101
+DIM_ORANGE :: 102
+GREEN :: 103
+DIM_GREEN :: 104
+RED :: 105
+DIM_RED :: 106
+BLUE :: 107
+DIM_BLUE :: 108
+YELLOW :: 109
+PURPLE :: 110
+WHITE :: 112
 
 // Brightness of the white LEDs (the white palette).
 W_OFF :: 0
@@ -105,6 +112,19 @@ REAPPLY_PALETTE :: [?]u8{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x05, 0xF7}
 // something drawn on the display, the display backlight LEDs must be
 // turned on"; USB powered, Push 2 limits it).
 DISPLAY_BRIGHTNESS :: [?]u8{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x08, 0x7F, 0x01, 0xF7}
+// Set Touch Strip Configuration 0x68, its default (Live changes it): Push 2
+// lights a point where the finger is, returns to the centre, sends pitch bend.
+TOUCH_STRIP_DEFAULT :: [?]u8{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x17, 0x68, 0xF7}
+
+// A Set LED Color Palette Entry command.
+palette_entry :: proc "contextless" (index: u8, rgb: u32, white: u8) -> [17]u8 {
+	r, g, b := u8(rgb >> 16), u8(rgb >> 8), u8(rgb)
+	return {0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x03, index, r & 0x7F, r >> 7, g & 0x7F, g >> 7, b & 0x7F, b >> 7, white & 0x7F, white >> 7, 0xF7}
+}
+
+// The clip palette as the launcher looks colours up in it: by index (0, off,
+// never chosen for a clip's colour but black).
+clip_palette: [HUES + 1]kit.RGB
 
 // The surface's state.
 Push2 :: struct {
@@ -114,13 +134,16 @@ Push2 :: struct {
 	encoders:      ^kit.Modes,
 	pads:          ^kit.Modes,
 	shift:         ^kit.Modifier,
+	track_colour:  u32, // what palette entries 25 and 26 are now
 	x, y:          f32, // setup: where the next side button goes
 }
 
-// Hello: the palette, the backlight, then User mode (the one command with
-// a reply, last).
-hello_messages: [len(PALETTE) + 3][]u8
-hello_bytes: [len(PALETTE)][17]u8
+// Hello: the palettes, the backlight, the touch strip, then User mode (the
+// one command with a reply, last).
+HELLO_ENTRIES :: len(PALETTE) + HUES + 2
+hello_messages: [HELLO_ENTRIES + 4][]u8
+hello_bytes: [HELLO_ENTRIES][17]u8
+strip := TOUCH_STRIP_DEFAULT
 live := MIDI_MODE_LIVE
 user := MIDI_MODE_USER
 reapply := REAPPLY_PALETTE
@@ -160,15 +183,28 @@ ENTRY_NAME :: abi.ENTRY_SYMBOL when ODIN_BUILD_MODE == .Dynamic else "push2_odin
 fsurf_entry := abi.Entry{
 	fsurf_version = abi.VERSION,
 	init          = proc "c" (path: cstring) -> bool {
-		// The hello: each palette entry (Set LED Color Palette Entry), reapplied, User mode.
-		for p, i in PALETTE {
-			r, g, b := u8(p.rgb >> 16), u8(p.rgb >> 8), u8(p.rgb)
-			hello_bytes[i] = {0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x03, p.index, r & 0x7F, r >> 7, g & 0x7F, g >> 7, b & 0x7F, b >> 7, p.white & 0x7F, p.white >> 7, 0xF7}
-			hello_messages[i] = hello_bytes[i][:]
+		context = runtime.default_context()
+		// The hello: each palette entry (Set LED Color Palette Entry): the
+		// surface's own, the clips' hues, the track's colour; reapplied; the
+		// backlight; the touch strip; User mode.
+		n := 0
+		for p in PALETTE {
+			hello_bytes[n] = palette_entry(p.index, p.rgb, p.white)
+			n += 1
 		}
-		hello_messages[len(PALETTE)] = reapply[:]
-		hello_messages[len(PALETTE) + 1] = backlight[:]
-		hello_messages[len(PALETTE) + 2] = user[:]
+		for h in 0 ..< HUES {
+			c := kit.hsv_to_rgb(f64(h) * 360 / HUES, 1, 1)
+			clip_palette[h + 1] = c
+			hello_bytes[n] = palette_entry(u8(h + 1), kit.rgb_to_hex(c), 64)
+			n += 1
+		}
+		hello_bytes[n] = palette_entry(TRACK_DIM, 0x000f3c, 16)
+		hello_bytes[n + 1] = palette_entry(TRACK, 0x0050ff, 64)
+		for &b, i in hello_bytes do hello_messages[i] = b[:]
+		hello_messages[HELLO_ENTRIES] = reapply[:]
+		hello_messages[HELLO_ENTRIES + 1] = backlight[:]
+		hello_messages[HELLO_ENTRIES + 2] = strip[:]
+		hello_messages[HELLO_ENTRIES + 3] = user[:]
 		spec.hello = hello_messages[:]
 		return kit.library_init(&library)
 	},
@@ -183,11 +219,11 @@ SKIN :: []struct { name: string, value: u8 }{
 	{"Transport.Record.On", RED}, {"Transport.Record.Off", DIM_RED},
 	{"Transport.Metronome.On", W_ON}, {"Transport.Metronome.Off", W_DIM}, {"Transport.Tap.Off", W_DIM},
 	{"Mode.On", W_ON}, {"Mode.Off", W_DIM}, {"Shift.On", W_ON}, {"Shift.Off", W_DIM}, {"Repeat.On", W_ON}, {"Repeat.Off", W_DIM},
-	{"Drum.Pad", DIM_BLUE}, {"Drum.Hit", BLUE}, {"Repeat.Pad", PURPLE}, {"Repeat.Hit", WHITE},
-	{"Keyboard.Root", BLUE}, {"Keyboard.In_Scale", DIM_WHITE}, {"Keyboard.Out_Of_Scale", OFF}, {"Keyboard.Playing", GREEN},
+	{"Drum.Pad", TRACK_DIM}, {"Drum.Hit", TRACK}, {"Repeat.Pad", PURPLE}, {"Repeat.Hit", WHITE},
+	{"Keyboard.Root", TRACK}, {"Keyboard.In_Scale", DIM_WHITE}, {"Keyboard.Out_Of_Scale", OFF}, {"Keyboard.Playing", GREEN},
 	{"Session.Clip.Empty", OFF}, {"Session.Clip.Stopped", DIM_ORANGE}, {"Session.Clip.Playing", GREEN},
 	{"Session.Clip.Queued", YELLOW}, {"Session.Clip.Recording", RED}, {"Session.Clip.Record_Queued", DIM_RED},
-	{"Session.Clip.Stopping", ORANGE},
+	{"Session.Clip.Stopping", ORANGE}, {"Session.Scene.On", DIM_WHITE}, {"Session.Scene.Off", OFF},
 	{"Navigation.On", W_ON}, {"Navigation.Off", W_OFF}, {"Device.Bank.On", W_ON}, {"Device.Bank.Off", W_OFF},
 	{"Mixer.Select.On", WHITE}, {"Mixer.Select.Off", DIM_WHITE}, {"Mixer.Select.None", OFF},
 	{"Mixer.Mute.On", ORANGE}, {"Mixer.Mute.Off", DIM_ORANGE}, {"Mixer.Mute.None", OFF},
@@ -327,6 +363,8 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	repeat := kit.note_repeat_make(cs, "Note Repeat", pads, rate = 0.25, priority = 1)
 	repeat_button := kit.modifier_make(cs, "Repeat", side(cs, "Repeat", CC_REPEAT, false), {repeat})
 	session := kit.launcher_make(cs, "Session", pads)
+	session.palette = clip_palette[:] // stopped clips in their colours
+	for b, i in scenes do kit.launcher_bind_scene(session, i, b) // (scenes[0]: the top one)
 	nav := kit.navigation_make(cs, tracks = 1, scenes = 1)
 	kit.layer_bind(nav.layer, "left", side(cs, "Left", CC_LEFT, false))
 	kit.layer_bind(nav.layer, "right", side(cs, "Right", CC_RIGHT, false))
@@ -342,7 +380,14 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	}
 
 	for b in OTHER_BUTTONS do side(cs, b.name, b.cc, b.left)
-	_ = swing; _ = strip; _ = scenes
+	_ = swing; _ = strip
+
+	// The selected track's colour: palette entries 25 and 26, set again
+	// (and reapplied, so the lights using them change) when it changes.
+	colour := kit.component_make(cs, "Track Colour")
+	colour.daw_topics = {.Tracks}
+	colour.on_daw = proc(c: ^kit.Component, e: abi.Daw_Event) { track_colour(c.cs) }
+	colour.on_activate = proc(c: ^kit.Component) { track_colour(c.cs) }
 
 	// ── The display ──
 	screen := kit.component_make(cs, "Screen")
@@ -356,11 +401,30 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	kit.place_display(d, 66, 30, 234, 39)
 
 	kit.ring_setup(cs, 8, 8)
-	for c in ([?]^kit.Component{transport, app, &p.shift.component, tempo_c, selected, rows, nav, &p.encoders.component, &p.pads.component, screen}) do kit.surface_add(cs, c)
+	for c in ([?]^kit.Component{transport, app, &p.shift.component, tempo_c, selected, rows, nav, &p.encoders.component, &p.pads.component, screen, colour}) do kit.surface_add(cs, c)
 	return true
 }
 
 SCENE_NAMES := [8]string{"1/32t", "1/32", "1/16t", "1/16", "1/8t", "1/8", "1/4t", "1/4"}
+
+// Palette entries 25 (dim) and 26 as the selected track's colour, when it changed.
+track_colour :: proc(cs: ^kit.Control_Surface) {
+	p := (^Push2)(cs.user)
+	if cs.daw == nil do return
+	c := u32(kit.daw_get(cs, .Track_Color, kit.selected_track(cs))) & 0xFFFFFF
+	if c == 0 do c = 0x0050ff
+	if c == p.track_colour do return
+	p.track_colour = c
+	rgb := kit.rgb_from_hex(c)
+	dim := kit.rgb_to_hex({rgb.r / 5, rgb.g / 5, rgb.b / 5})
+	a, b := palette_entry(TRACK_DIM, dim, 16), palette_entry(TRACK, c, 64)
+	kit.send(cs, a[:])
+	kit.send(cs, b[:])
+	kit.send(cs, reapply[:])
+	kit.skin_set_display(cs.skin, "Drum.Pad", dim) // (for tools that draw the device)
+	kit.skin_set_display(cs.skin, "Drum.Hit", c)
+	kit.skin_set_display(cs.skin, "Keyboard.Root", c)
+}
 
 invalidate :: proc(cs: ^kit.Control_Surface) {
 	kit.display_invalidate(kit.display(cs, 0))
