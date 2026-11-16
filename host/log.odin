@@ -37,7 +37,8 @@ Log_Source :: enum u8 {
 
 // A line in the log.
 Log_Entry :: struct {
-	time_ns: u64, // its last repeat's
+	time_ns: u64, // its last repeat's, on the host's clock (the monitor's)
+	since_ns: u64, // the same, since the host started
 	level:   abi.Log_Level,
 	source:  Log_Source,
 	uid:     u32, // the surface's (Instance.uid); 0 = none
@@ -49,6 +50,7 @@ Log_Entry :: struct {
 @(private)
 Log :: struct {
 	debug:   bool,
+	origin:  u64, // the host's clock when it started
 	entries: [dynamic]Log_Entry,
 }
 
@@ -106,6 +108,7 @@ log_add :: proc(h: ^Host, s: ^Instance, level: abi.Log_Level, message: string, s
 		if e.level == level && e.message == message {
 			e.count += 1
 			e.time_ns = now
+			e.since_ns = now - min(now, l.origin)
 			return
 		}
 		break
@@ -127,7 +130,7 @@ log_add :: proc(h: ^Host, s: ^Instance, level: abi.Log_Level, message: string, s
 	}
 	name := string(s.descriptor.name) if s != nil && s.descriptor != nil && s.descriptor.name != nil else ""
 	append(&l.entries, Log_Entry{
-		time_ns = now, level = level, source = source, uid = uid, count = 1,
+		time_ns = now, since_ns = now - min(now, l.origin), level = level, source = source, uid = uid, count = 1,
 		surface = strings.clone(name, a), message = strings.clone(message, a),
 	})
 }
@@ -143,14 +146,15 @@ log_level_name :: proc(level: abi.Log_Level) -> string {
 	return "?"
 }
 
-// An entry as a line of text (in the temp allocator):
+// An entry as a line of text (in the temp allocator), its time in seconds
+// since the host started:
 //
 //	12.345  info     Grid (kit example)  mode: mixer
 //	12.400  warning  host: Grid (kit example)  its device "display" (2982:1967) isn't open
 //	12.500  debug    Grid (kit example)  pad 3,0 (x12)
 log_line :: proc(e: Log_Entry) -> string {
 	b := strings.builder_make(context.temp_allocator)
-	ms := e.time_ns / 1_000_000
+	ms := e.since_ns / 1_000_000
 	strings.write_uint(&b, uint(ms / 1000))
 	strings.write_byte(&b, '.')
 	frac := ms % 1000

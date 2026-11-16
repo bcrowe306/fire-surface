@@ -138,6 +138,7 @@ host_init :: proc(h: ^Host, config: Host_Config, allocator := context.allocator)
 	router_init(&h.router, allocator)
 	monitor_init(&h.monitor, allocator)
 	log_init(&h.log, allocator)
+	h.log.origin = host_now_ns(h)
 	for s, i in ([4]string{config.name, config.vendor, config.url, config.version}) do h.strings[i] = strings.clone_to_cstring(s, allocator)
 }
 
