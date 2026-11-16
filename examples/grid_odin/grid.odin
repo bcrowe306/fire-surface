@@ -21,6 +21,8 @@ Without fsurf.daw, the drum and keys modes still play.
 */
 package grid_odin
 
+import "core:log"
+
 import abi "../../abi"
 import kit "../../surface"
 
@@ -178,6 +180,7 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 		o := clamp(k.octave + (1 if e.slot == "up" else -1), -1, 8)
 		kit.keyboard_set(k, k.scale, k.root, o, k.in_key)
 		kit.notify(c.cs, "Octave Up" if e.slot == "up" else "Octave Down")
+		log.debugf("octave %d", o) // (core:log reaches the host's log)
 	}
 
 	session := kit.launcher_make(cs, "Session", pads)
@@ -188,7 +191,10 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	kit.modes_add(modes, "drum", {drums, &repeat_button.component}, button(cs, "Drum", CC_DRUM), .Hybrid)
 	kit.modes_add(modes, "keys", {g.keyboard, octave}, button(cs, "Keys", CC_KEYS), .Hybrid)
 	kit.modes_add(modes, "session", {session}, button(cs, "Session", CC_SESSION), .Hybrid)
-	modes.on_change = proc(m: ^kit.Modes, from, to: int) { kit.notify(m.cs, kit.modes_current(m)) }
+	modes.on_change = proc(m: ^kit.Modes, from, to: int) {
+		kit.notify(m.cs, kit.modes_current(m))
+		log.infof("mode: %s", kit.modes_current(m))
+	}
 
 	kit.ring_setup(cs, 4, 4) // the host's tracks and scenes it shows at once
 	for c in ([?]^kit.Component{transport, device, &shift.component, strip, nav, &modes.component}) do kit.surface_add(cs, c)

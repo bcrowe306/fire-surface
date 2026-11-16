@@ -14,6 +14,8 @@ rule for them: they pass), and the rest works the host:
 */
 package keys_odin
 
+import "core:log"
+
 import abi "../../abi"
 import kit "../../surface"
 
@@ -113,5 +115,6 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	kit.layer_bind(app.layer, "redo", small(cs, "Redo", CC_REDO, 20, 60))
 
 	for c in ([]^kit.Component{transport, mixer, device, nav, app}) do kit.surface_add(cs, c)
+	log.info("ready: the keys play the host's track; the transport, faders and knobs are the surface's")
 	return true
 }
