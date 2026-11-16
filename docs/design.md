@@ -418,6 +418,52 @@ Pads), documented, and pushed.
    hidapi (waits: displays are mirrored), `pads_mini` ported,
    `fire.pads` components, Settings → Control Surfaces, the guides.
 
+## After version 1
+
+In this order, once the SDK above is finished.
+
+1. **USB and HID in Pads.** The protocol already has devices
+   (`device_write`, `on_device_read`); what waits is the host's backend.
+   Surfaces see the same calls on every platform; only the host's side
+   changes:
+   - macOS, Windows, Linux (Pi 4/5 and other ARM boards included):
+     libusb for bulk (displays), HID through the hidapi already in SDL3
+     (`SDL_hid_*`), so only libusb is new.
+   - Linux: a udev rules file shipped with Pads (otherwise only root opens
+     the device); claim only the interface the surface names, leaving MIDI
+     to ALSA; HID through hidraw, without detaching the kernel driver.
+   - Android: no bus scan; the system's USB API asks the user, and libusb
+     takes the device it hands over (`libusb_wrap_sys_device`).
+   - iPad: no raw USB (USB DriverKit only, on M-series iPads, with an
+     entitlement): devices not offered; MIDI only.
+   - Small boards: frames sent only when changed, at a capped rate; measure
+     drawing on the board itself. Tested in CI with a fake USB backend, as
+     MIDI is; on hardware with a real Pi.
+2. **Surfaces linked in.** A host can link surfaces in as well as load
+   `.fsurf` libraries (an entry per surface, not only a looked-up
+   symbol). iOS loads no code an app didn't ship, and Android runs none
+   from an app's data folder.
+3. **Scripted surfaces (Lua).** A runtime surface, compiled and shipped
+   in fire-surface and built into hosts, that runs scripts from the
+   surface folders: to a host, each script is a surface. User-written
+   surfaces on iPad and Android (MIDI there), and no compiler needed on
+   the desktop.
+   - The claim table keeps scripts off the audio thread: a script fills
+     its table, the host applies it; the script runs on the surface
+     thread, its garbage collector and allocations with it.
+   - Everything else as for compiled surfaces: detection, the monitor,
+     the virtual controller, `fsurf.daw`, hot reload, the draw kit for
+     displays.
+   - Lua 5.4 (plain C, small, MIT, an interpreter: iOS allows no JIT), or
+     Luau (MIT; types; built for sandboxing shared scripts). Neither `io`
+     nor `os`: only the SDK and a settings store per surface.
+   - Bindings generated from the headers; docs and tests as for the kit.
+   - Look at first: Apple's rules for scripts users import themselves
+     (accepted: Codea, Pythonista) against scripts downloaded from a
+     catalogue (less clear).
+   - Pads itself on iPad and Android (SDL3 there, a touch UI, Odin's iOS
+     support) is a separate step: this makes surfaces portable, not Pads.
+
 ## Questions for later
 
 - Windows: WinMM MIDI ports are exclusive to one process, so a
