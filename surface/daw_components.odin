@@ -18,7 +18,8 @@ light_flag :: proc(c: ^Control, base: string, on: bool) {
 	light(c, concat(base, ".On" if on else ".Off"))
 }
 
-@(private)
+// Lights again each control a component owns (its `on_owned` for each):
+// after what its controls mean changed (a page, a bank).
 redraw_owned :: proc(comp: ^Component) {
 	if comp.on_owned == nil do return
 	for s in comp.layer.slots {
