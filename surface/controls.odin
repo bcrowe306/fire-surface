@@ -119,6 +119,12 @@ Control :: struct {
 	msb:        u8, // CC14: the MSB waiting for its LSB
 	hold_task:  u32,
 	pressed_by: ^Component, // the release goes where the press went
+	// A light held (`light_hold`): it shows `held` whatever its owners
+	// send; what they sent meanwhile is kept, and shown on `light_release`.
+	held_light: bool,
+	wanted:     [3]u8,
+	wanted_len: int,
+	has_wanted: bool,
 
 	// Ownership (layers.odin) and routing.
 	owners:        [dynamic]Ownership,
@@ -518,6 +524,13 @@ set_position :: proc(c: ^Control, v: f32) {
 
 @(private)
 send_feedback :: proc(c: ^Control, msg: [3]u8, n: int) {
+	c.wanted, c.wanted_len, c.has_wanted = msg, n, true
+	if c.held_light do return
+	feedback_out(c, msg, n)
+}
+
+@(private)
+feedback_out :: proc(c: ^Control, msg: [3]u8, n: int) {
 	if c.has_last && c.last_len == n && c.last == msg do return
 	if !c.cs.active do return
 	m := msg
@@ -552,3 +565,25 @@ light_off :: proc(c: ^Control) {
 // Forgets what was sent to a control, so the next light is sent even if
 // the same.
 light_reset :: proc(c: ^Control) { c.has_last = false }
+
+// Holds control `c`'s light at `value` (a hint while a modifier is held:
+// what a button does with it), whatever its owners send until
+// `light_release`.
+light_hold :: proc(c: ^Control, value: u8) {
+	b := out_binding(c)
+	msg: [3]u8
+	#partial switch b.kind {
+	case .Note: msg = note_on(b.channel, b.number, value)
+	case .CC, .CC14: msg = control_change(b.channel, b.number, value)
+	case: return
+	}
+	c.held_light = true
+	feedback_out(c, msg, 3)
+}
+
+// Lets go of `light_hold`: the light shows what its owners last sent.
+light_release :: proc(c: ^Control) {
+	if !c.held_light do return
+	c.held_light = false
+	if c.has_wanted do feedback_out(c, c.wanted, c.wanted_len)
+}
